@@ -10,10 +10,12 @@ import configparser
 import re
 import os
 
+Config_Dir = "${HOME}/.config/sdl"
+
 Api_Id = None
 Api_Hash = None
 
-Music_Dir = "/sdcard/Music/sdl"
+Music_Dir = None
 
 def Logger(msg, level = "LOG"):
     print(msg)
@@ -296,21 +298,26 @@ class SpotDownload:
         self.client.start()
         self.client.loop.run_until_complete(self._download(link_list))
 
-config_file = os.path.expandvars("${HOME}/.config/sdl/config.ini")
+
+Config_Dir = os.path.expandvars(Config_Dir)
+
+config_file = Config_Dir + "/config.ini"
 if not os.path.isfile(config_file):
     print("Config file is not present: " + config_file)
     print("Inorder to sdl to work, you need the Telegram Api Id and Hash")
     print("Exiting...")
     exit()
 
+config = configparser.ConfigParser()
+config.read(config_file)
+
+Music_Dir = os.path.expandvars(config["download"]["Dir"])
+
 if not os.path.isdir(Music_Dir):
     print("Directory doesn't exists: " + Music_Dir)
     print("Please make sure you have specified the right directory to download files.")
     print("Exiting...")
     exit()
-
-config = configparser.ConfigParser()
-config.read(config_file)
 
 Api_Id = int(config["telegram.api"]["Id"])
 Api_Hash = config["telegram.api"]["Hash"]
