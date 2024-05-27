@@ -140,6 +140,7 @@ class SpotDownload:
         self._last_album_title = ""
         self._last_album_artist = ""
         self._last_album_dl_count = 0
+        self._one_photo_recieved = False
         self.audio = False
         self.photo = False
 
@@ -172,7 +173,7 @@ class SpotDownload:
 
     async def _download_audio (self, msg):
 
-        file = Music_Dir + msg.file.name
+        file = Music_Dir + "/" + msg.file.name
         print(file)
         if not os.path.isfile(file):
             print("File doesn't exists, therefore downloading...")
@@ -198,12 +199,14 @@ class SpotDownload:
         if event.audio:
             await self._download_audio(event)
             self._last_album_dl_count += 1
-            if self._last_album_track_count == self._last_album_dl_count:
+            if self._last_album_track_count == self._last_album_dl_count and self._one_photo_recieved:
                 Logger("Downloaded all the tracks. Disconnecting...")
-                self._last_dl_status = "Sucess"
+                self._last_dl_status = "Success"
                 await self.client.disconnect()
             return
-        elif self._last_album_track_count > 0:
+        elif event.photo and self._last_album_track_count > 0:
+            self._one_photo_recieved = True
+            Logger("Recived one messeage with a photo")
             return
 
         if event.buttons:
@@ -222,6 +225,10 @@ class SpotDownload:
     async def _track_dl_handler (self, event):
         await event.mark_read()
         if event.message.message == "Track not found." or event.message.message == "Invalid link ;)":
+            if event.message.message == "Track not found.":
+                Logger("Track no found. Disconnecting...", "WARN")
+            else:
+                Logger("Link was Invalid. Disconnecting...", "WARN")
             self._last_dl_status = "Failed"
             await self.client.disconnect()
 
