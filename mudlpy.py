@@ -136,12 +136,44 @@ class SpotDownload:
             SpotDownload.client = TelegramClient(session, api_id, api_hash)
         self._last_dl_status = None
         self._last_audio_msg = None
+        self._last_album_track_count = 0
+        self._last_album_title = ""
+        self._last_album_artist = ""
+        self._last_album_dl_count = 0
         self.audio = False
         self.photo = False
+
+    def _set_last_album_info(self, msg_text):
+
+        lend = 0
+        lstart = 0
+
+        while msg_text[lend] != "\n":
+            lend += 1
+
+        self._last_album_title = msg_text[9:lend]
+
+        lend += 1
+        lstart = lend
+
+        while msg_text[lend] != "\n":
+            lend += 1
+
+        self._last_album_artist = msg_text[lstart+10:lend]
+
+        lend += 1
+        lstart = lend
+        while msg_text[lend] != "\n":
+            lend += 1
+        lend += 1
+        lstart = lend
+
+        self._last_album_track_count = int(msg_text[lstart+16:])
 
     async def _download_audio (self, msg):
 
         file = Music_Dir + msg.file.name
+        print(file)
         if not os.path.isfile(file):
             print("File doesn't exists, therefore downloading...")
 
@@ -159,15 +191,25 @@ class SpotDownload:
     async def _album_dl_handler (self, event):
         await event.mark_read()
         if event.message.message == "Invalid link ;)":
-            Logger("Link was Invalid.")
+            Logger("Link was Invalid. Disconnecting...")
             self._last_dl_status = "Failed"
             await self.client.disconnect()
 
         if event.audio:
-
+            await self._download_audio(event)
+            self._last_album_dl_count += 1
+            if self._last_album_track_count == self._last_album_dl_count:
+                Logger("Downloaded all the tracks. Disconnecting...")
+                self._last_dl_status = "Sucess"
+                await self.client.disconnect()
+            return
+        elif self._last_album_track_count > 0:
+            return
 
         if event.buttons:
             # This must be the first msg if the url is a proper one
+            self._set_last_album_info(event.message.message)
+            print(event.message.message)
             Logger("Message has buttons")
             for row in event.buttons:
                 for btn in row:
@@ -176,8 +218,6 @@ class SpotDownload:
                         await btn.click()
         else:
             Logger("Message has no buttons", "WARN")
-
-        pass
 
     async def _track_dl_handler (self, event):
         await event.mark_read()
@@ -273,7 +313,7 @@ sdl = SpotDownload('anon', Api_Id, Api_Hash)
 # sdl.download([("https://open.spotify.com/album/5XeFesFbtLpXzIVDNQP22n", "Album")]) # invalid link
 
 sdl.download([
-    ("https://open.spotify.com/album/0JGOiO34nwfUdDrD612dOi", "Album"),
+    ("https://open.spotify.com/album/0JGOiO34nwfUdDrD612dOp", "Album"),
     #("https://open.spotify.com/track/65ma40cLxAJ3fhGH2HqJek", "Track"),
     #("https://open.spotify.com/track/150QIbzsnzGQLLcXVbJaXQ", "Track"),
     #("https://open.spotify.com/track/5XaFesFbtLpXzIVDNQP22n", "Track") # not found
