@@ -141,6 +141,7 @@ class SpotDownload:
         self._last_album_artist = ""
         self._last_album_dl_count = 0
         self._one_photo_recieved = False
+        self._one_track_recieved = False
         self.audio = False
         self.photo = False
 
@@ -233,18 +234,19 @@ class SpotDownload:
             await self.client.disconnect()
 
         if event.audio:
+            Logger("Recived one messeage with an audio")
+            self._one_track_recieved = True
             await self._download_audio(event)
-            self.audio = True
 
-            print("Got an audio")
         if event.photo:
-            self.photo = True
-            print("Got a photo")
+            Logger("Recived one messeage with a photo")
+            self._one_photo_recieved = True
 
-        if self.audio and self.photo:
+        if self._one_photo_recieved and self._one_track_recieved:
+            Logger("Recieved the track and the photo. Disconnecting...")
             self._last_dl_status = "Success"
             await self.client.disconnect()
-        pass
+
 
     async def _download (self, link_list):
 
@@ -320,8 +322,8 @@ sdl = SpotDownload('anon', Api_Id, Api_Hash)
 # sdl.download([("https://open.spotify.com/album/5XeFesFbtLpXzIVDNQP22n", "Album")]) # invalid link
 
 sdl.download([
-    ("https://open.spotify.com/album/0JGOiO34nwfUdDrD612dOp", "Album"),
-    #("https://open.spotify.com/track/65ma40cLxAJ3fhGH2HqJek", "Track"),
+    #("https://open.spotify.com/album/0JGOiO34nwfUdDrD612dOp", "Album"),
+    ("https://open.spotify.com/track/65ma40cLxAJ3fhGH2HqJek", "Track"),
     #("https://open.spotify.com/track/150QIbzsnzGQLLcXVbJaXQ", "Track"),
     #("https://open.spotify.com/track/5XaFesFbtLpXzIVDNQP22n", "Track") # not found
 ])
