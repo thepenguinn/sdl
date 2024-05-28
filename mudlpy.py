@@ -137,15 +137,13 @@ class SpotDownload:
         if SpotDownload.client == None:
             SpotDownload.client = TelegramClient(session, api_id, api_hash)
         self._last_dl_status = None
-        self._last_audio_msg = None
         self._last_album_track_count = 0
         self._last_album_title = ""
         self._last_album_artist = ""
         self._last_album_dl_count = 0
         self._one_photo_recieved = False
         self._one_track_recieved = False
-        self.audio = False
-        self.photo = False
+        self._last_dl_files = None
 
     def _set_last_album_info(self, msg_text):
 
@@ -174,12 +172,18 @@ class SpotDownload:
 
         self._last_album_track_count = int(msg_text[lstart+16:])
 
+    def _append_lyrics (self):
+        for i in self._last_dl_files:
+            print(i)
+
     async def _download_audio (self, msg):
 
         file = Music_Dir + "/" + msg.file.name
-        print(file)
         if not os.path.isfile(file):
-            print("File doesn't exists, therefore downloading...")
+            self._last_dl_files.append(file)
+            Logger("File doesn't exists, downloading to " + file)
+        else:
+            Logger("File exists, skipping the download", "WARN")
 
 
         # print("name: ", msg.file.name)
@@ -209,13 +213,16 @@ class SpotDownload:
             return
         elif event.photo and self._last_album_track_count > 0:
             self._one_photo_recieved = True
-            Logger("Recived one messeage with a photo")
+            Logger("Recived one message with a photo")
+            return
+
+        if event.message.message == "Downloading…":
+            Logger("Recived one message with a Downloading…")
             return
 
         if event.buttons:
             # This must be the first msg if the url is a proper one
             self._set_last_album_info(event.message.message)
-            print(event.message.message)
             Logger("Message has buttons")
             for row in event.buttons:
                 for btn in row:
@@ -236,12 +243,12 @@ class SpotDownload:
             await self.client.disconnect()
 
         if event.audio:
-            Logger("Recived one messeage with an audio")
+            Logger("Recived one message with an audio")
             self._one_track_recieved = True
             await self._download_audio(event)
 
         if event.photo:
-            Logger("Recived one messeage with a photo")
+            Logger("Recived one message with a photo")
             self._one_photo_recieved = True
 
         if self._one_photo_recieved and self._one_track_recieved:
@@ -257,40 +264,55 @@ class SpotDownload:
             link_url = link[0]  # should be a spotify url to a track or an album
             link_type = link[1] # should be Track or Album
 
-            print("for loop")
-            print(self.client.is_connected())
-
             if not self.client.is_connected():
-                print("Connecting to Telegram...")
+                Logger("Connecting to Telegram...")
                 await self.client.connect()
-                print("Connected")
+                Logger("Connected to Telegram")
 
+            Logger("Sending the url to deezload2bot")
             await self.client.send_message(
                 "deezload2bot", link_url
             )
             if link_type == "Album":
+                Logger("Dettaching track download handler...")
                 self.client.remove_event_handler(
                     self._track_dl_handler
                 )
+                Logger("Attaching album download handler...")
                 self.client.add_event_handler(
                     self._album_dl_handler,
                     events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
                 )
+                self._last_album_track_count = 0
+                self._last_album_title = ""
+                self._last_album_artist = ""
+                self._last_album_dl_count = 0
             else:
+                Logger("Dettaching album download handler...")
                 self.client.remove_event_handler(
                     self._album_dl_handler
                 )
+                Logger("Attaching track download handler...")
                 self.client.add_event_handler(
                     self._track_dl_handler,
                     events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
                 )
+                self._one_track_recieved = False
 
             self._last_dl_status = None
-            self.audio = False
-            self.photo = False
-            print("Waiting for Reply...")
+            self._last_dl_files = []
+            self._one_photo_recieved = False
+
+            Logger("Waiting for the reply from deezload2bot...")
             await self.client.run_until_disconnected()
-            print(self._last_dl_status)
+            if self._last_dl_status == "Success":
+                Logger("Succeded downloading the file(s)")
+                self._append_lyrics()
+            elif self._last_dl_status == "Failed":
+                Logger("Failed downloading the file(s)", "WARN")
+            else:
+                Logger("_last_dl_status should be either Success or Failed", "WARN")
+                Logger("Current value: " + self._last_dl_status, "WARN")
 
 
     def download (self, link_list):
@@ -329,8 +351,8 @@ sdl = SpotDownload('anon', Api_Id, Api_Hash)
 # sdl.download([("https://open.spotify.com/album/5XeFesFbtLpXzIVDNQP22n", "Album")]) # invalid link
 
 sdl.download([
-    #("https://open.spotify.com/album/0JGOiO34nwfUdDrD612dOp", "Album"),
-    ("https://open.spotify.com/track/65ma40cLxAJ3fhGH2HqJek", "Track"),
+    ("https://open.spotify.com/album/0JGOiO34nwfUdDrD612dOp", "Album"),
+    #("https://open.spotify.com/track/65ma40cLxAJ3fhGH2HqJek", "Track"),
     #("https://open.spotify.com/track/150QIbzsnzGQLLcXVbJaXQ", "Track"),
     #("https://open.spotify.com/track/5XaFesFbtLpXzIVDNQP22n", "Track") # not found
 ])
