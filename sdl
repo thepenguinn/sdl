@@ -151,6 +151,7 @@ class SpotDownload:
         self._last_album_dl_count = 0
         self._one_photo_recieved = False
         self._one_track_recieved = False
+        self._clicked_button = False
         self._last_dl_files = None
 
     def _set_last_album_info(self, msg_text):
@@ -229,6 +230,10 @@ class SpotDownload:
             await self.client.disconnect()
 
         if event.audio:
+            if not self._clicked_button:
+                Logger("Directly recieving the tracks")
+                self._clicked_button = True
+
             await self._download_audio(event)
             self._last_album_dl_count += 1
             if self._last_album_track_count == self._last_album_dl_count and self._one_photo_recieved:
@@ -236,26 +241,45 @@ class SpotDownload:
                 self._last_dl_status = "Success"
                 await self.client.disconnect()
             return
-        elif event.photo and self._last_album_track_count > 0:
-            self._one_photo_recieved = True
-            Logger("Recived one message with a photo")
-            return
-
-        if event.message.message == "Downloading…":
+        elif event.message.message == "Downloading…":
             Logger("Recived one message with a Downloading…")
             return
+        elif event.buttons:
 
-        if event.buttons:
+            if self._clicked_button:
+                Logger("Got another message with buttons", "WARN")
+                return
+
             # This must be the first msg if the url is a proper one
             self._set_last_album_info(event.message.message)
+            Logger("Album Track Count: " + str(self._last_album_track_count))
             Logger("Message has buttons")
             for row in event.buttons:
                 for btn in row:
                     if btn.text == "GET ALL ⬇️":
                         Logger("Clicking GET ALL button")
+                        self._clicked_button = True
                         await btn.click()
-        else:
-            Logger("Message has no buttons", "WARN")
+            if not self._clicked_button:
+                Logger("Seems like there were no GET ALL button")
+                if self._last_album_track_count == 1:
+                    Logger("Clicking the first button")
+                    self._one_photo_recieved = True
+                    self._clicked_button = True
+                    await event.buttons[0][0].click()
+                else:
+                    Logger("Track Count is not 1, somethings wrong", "WARN")
+
+        elif event.photo:
+            if not self._clicked_button:
+                Logger("Seems like we are recieving tracks directly")
+                self._set_last_album_info(event.message.message)
+                Logger("Album Track Count: " + str(self._last_album_track_count))
+                self._clicked_button = True
+
+            self._one_photo_recieved = True
+            Logger("Recived one message with a photo")
+            return
 
     async def _track_dl_handler (self, event):
         await event.mark_read()
@@ -312,6 +336,7 @@ class SpotDownload:
                 self._last_album_title = ""
                 self._last_album_artist = ""
                 self._last_album_dl_count = 0
+                self._clicked_button = False
             else:
                 Logger("Dettaching album download handler...")
                 self.client.remove_event_handler(
