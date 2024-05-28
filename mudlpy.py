@@ -5,6 +5,7 @@ from telethon import TelegramClient, events, tl
 from googlesearch import search
 from pyfzf.pyfzf import FzfPrompt
 
+import subprocess
 import asyncio
 import configparser
 import re
@@ -172,16 +173,33 @@ class SpotDownload:
 
         self._last_album_track_count = int(msg_text[lstart+16:])
 
-    def _append_lyrics (self):
-        for i in self._last_dl_files:
-            print(i)
+    def _curate_files (self):
+
+        if len(self._last_dl_files) < 1:
+            Logger("It seems like no files have been downloaded.", "WARN")
+            return
+
+        lrccmd = ["glrclib", "--verbose", "--files"]
+        termuxcmd = ["termux-media-scan"]
+
+        subprocess.run(lrccmd + self._last_dl_files)
+        subprocess.run(termuxcmd + self._last_dl_files)
+
+    def _prog_callback(self, current, total):
+        # erases the line and moves to the first column
+        print("", end = "\r")
+        print('Downloaded', "%05.2f"%(current / 1000000) + "MB",
+              'out of', "%05.2f"%(total / 1000000) + "MB" +
+              ":% 6.2f%%"%(current / total * 100), end = "")
 
     async def _download_audio (self, msg):
 
         file = Music_Dir + "/" + msg.file.name
         if not os.path.isfile(file):
             self._last_dl_files.append(file)
-            Logger("File doesn't exists, downloading to " + file)
+            Logger("Downloading to " + file)
+            await msg.download_media(file, progress_callback = self._prog_callback)
+            print("")
         else:
             Logger("File exists, skipping the download", "WARN")
 
@@ -307,7 +325,7 @@ class SpotDownload:
             await self.client.run_until_disconnected()
             if self._last_dl_status == "Success":
                 Logger("Succeded downloading the file(s)")
-                self._append_lyrics()
+                self._curate_files()
             elif self._last_dl_status == "Failed":
                 Logger("Failed downloading the file(s)", "WARN")
             else:
@@ -351,8 +369,8 @@ sdl = SpotDownload('anon', Api_Id, Api_Hash)
 # sdl.download([("https://open.spotify.com/album/5XeFesFbtLpXzIVDNQP22n", "Album")]) # invalid link
 
 sdl.download([
-    ("https://open.spotify.com/album/0JGOiO34nwfUdDrD612dOp", "Album"),
-    #("https://open.spotify.com/track/65ma40cLxAJ3fhGH2HqJek", "Track"),
+    #("https://open.spotify.com/album/0JGOiO34nwfUdDrD612dOp", "Album"),
+    ("https://open.spotify.com/track/65ma40cLxAJ3fhGH2HqJek", "Track"),
     #("https://open.spotify.com/track/150QIbzsnzGQLLcXVbJaXQ", "Track"),
     #("https://open.spotify.com/track/5XaFesFbtLpXzIVDNQP22n", "Track") # not found
 ])
