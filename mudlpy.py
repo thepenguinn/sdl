@@ -9,6 +9,7 @@ import subprocess
 import asyncio
 import configparser
 import re
+import sys
 import os
 
 Config_Dir = "${HOME}/.config/sdl"
@@ -32,8 +33,7 @@ class SpotQuery:
         if SpotQuery._fzf is None:
             SpotQuery._fzf = FzfPrompt()
         self.query = query
-        self.query_spotify_links()
-        self.prompt_user()
+        self.query_results = None
 
     def _get_index (self, line):
         end = 0
@@ -93,6 +93,13 @@ class SpotQuery:
         self.selected_query_result = self.query_results[sel_idx]
 
         return self.selected_query_result
+
+    def gen_result (self):
+
+        if not self.query_results:
+            self.query_spotify_links(self.query)
+
+        return self.prompt_user()
 
     def get_url (self, result = None):
         if result is None:
@@ -362,15 +369,30 @@ if not os.path.isdir(Music_Dir):
 Api_Id = int(config["telegram.api"]["Id"])
 Api_Hash = config["telegram.api"]["Hash"]
 
-sdl = SpotDownload('anon', Api_Id, Api_Hash)
+# TODO: download directly from links
+# pat = re.compile("^(https://open\.spotify\.com/(.+)/.{22})(\?)?(.*)$")
 
-# sdl.download([("https://open.spotify.com/album/0JGOiO34nwfUdDrD612dOp", "Album")])
-# sdl.download([("https://open.spotify.com/track/5XaFesFbtLpXzIVDNQP22n", "Track")]) # track not found
-# sdl.download([("https://open.spotify.com/album/5XeFesFbtLpXzIVDNQP22n", "Album")]) # invalid link
+query = ""
 
-sdl.download([
-    #("https://open.spotify.com/album/0JGOiO34nwfUdDrD612dOp", "Album"),
-    ("https://open.spotify.com/track/65ma40cLxAJ3fhGH2HqJek", "Track"),
-    #("https://open.spotify.com/track/150QIbzsnzGQLLcXVbJaXQ", "Track"),
-    #("https://open.spotify.com/track/5XaFesFbtLpXzIVDNQP22n", "Track") # not found
-])
+if len(sys.argv) > 1:
+
+    query = sys.argv[1]
+
+    for arg in sys.argv[2:]:
+        query = query + " " + arg
+else:
+    print("Query: ", end = "")
+    query = input()
+
+if query == "":
+    Logger("No query, exiting...")
+    exit()
+
+squery = SpotQuery(query)
+
+if squery.gen_result() is None:
+    Logger("No selections were generated, exiting...")
+    exit()
+
+sdl = SpotDownload(Config_Dir + "/anon", Api_Id, Api_Hash)
+sdl.download([(squery.get_url(), squery.get_type())])
