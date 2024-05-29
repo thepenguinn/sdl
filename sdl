@@ -151,6 +151,7 @@ class SpotDownload:
         self._last_album_dl_count = 0
         self._one_photo_recieved = False
         self._one_track_recieved = False
+        self._download_list = None
         self._clicked_button = False
         self._last_dl_files = None
 
@@ -228,6 +229,13 @@ class SpotDownload:
         # print("title: ", msg.file.title)
         # print("performer: ", msg.file.performer)
 
+    async def _download_audio_files (self):
+
+        for msg in self._download_list:
+            await self._download_audio(msg)
+
+        self.client.disconnect()
+
     async def _album_dl_handler (self, event):
         await event.mark_read()
         if event.message.message == "Invalid link ;)":
@@ -240,12 +248,17 @@ class SpotDownload:
                 Logger("Directly recieving the tracks")
                 self._clicked_button = True
 
-            await self._download_audio(event)
+            self._download_list.append(event)
+            # await self._download_audio(event)
             self._last_album_dl_count += 1
             if self._last_album_track_count == self._last_album_dl_count and self._one_photo_recieved:
                 Logger("Downloaded all the tracks. Disconnecting...")
                 self._last_dl_status = "Success"
-                await self.client.disconnect()
+                Logger("Dettaching album download handler...")
+                self.client.remove_event_handler(
+                    self._album_dl_handler
+                )
+                await self._download_audio_files()
             return
         elif event.message.message == "Downloading…":
             Logger("Recived one message with a Downloading…")
@@ -300,7 +313,8 @@ class SpotDownload:
         if event.audio:
             Logger("Recived one message with an audio")
             self._one_track_recieved = True
-            await self._download_audio(event)
+            self._download_list.append(event)
+            # await self._download_audio(event)
 
         if event.photo:
             Logger("Recived one message with a photo")
@@ -309,7 +323,11 @@ class SpotDownload:
         if self._one_photo_recieved and self._one_track_recieved:
             Logger("Recieved the track and the photo. Disconnecting...")
             self._last_dl_status = "Success"
-            await self.client.disconnect()
+            Logger("Dettaching track download handler...")
+            self.client.remove_event_handler(
+                self._track_dl_handler
+            )
+            await self._download_audio_files()
 
 
     async def _download (self, link_list):
@@ -329,10 +347,6 @@ class SpotDownload:
                 "deezload2bot", link_url
             )
             if link_type == "Album":
-                Logger("Dettaching track download handler...")
-                self.client.remove_event_handler(
-                    self._track_dl_handler
-                )
                 Logger("Attaching album download handler...")
                 self.client.add_event_handler(
                     self._album_dl_handler,
@@ -344,10 +358,6 @@ class SpotDownload:
                 self._last_album_dl_count = 0
                 self._clicked_button = False
             else:
-                Logger("Dettaching album download handler...")
-                self.client.remove_event_handler(
-                    self._album_dl_handler
-                )
                 Logger("Attaching track download handler...")
                 self.client.add_event_handler(
                     self._track_dl_handler,
@@ -358,13 +368,25 @@ class SpotDownload:
             self._last_dl_status = None
             self._last_dl_files = []
             self._one_photo_recieved = False
+            self._download_list = []
 
             Logger("Waiting for the reply from deezload2bot...")
             await self.client.run_until_disconnected()
+
             if self._last_dl_status == "Success":
                 Logger("Succeded downloading the file(s)")
                 self._curate_files()
             elif self._last_dl_status == "Failed":
+                if link_type == "Album":
+                    Logger("Dettaching track download handler...")
+                    self.client.remove_event_handler(
+                        self._track_dl_handler
+                    )
+                else:
+                    Logger("Dettaching album download handler...")
+                    self.client.remove_event_handler(
+                        self._album_dl_handler
+                    )
                 Logger("Failed downloading the file(s)", "WARN")
             else:
                 Logger("_last_dl_status should be either Success or Failed", "WARN")
