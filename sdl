@@ -202,7 +202,13 @@ class SpotDownload:
 
     async def _download_audio (self, msg):
 
-        file = Music_Dir + "/" + msg.file.name
+        file = ""
+        for i in msg.file.name:
+            if i == "\"" or i == ":" or i == "?":
+                file = file + " "
+            else:
+                file = file + i
+        file = Music_Dir + "/" + file
         if not os.path.isfile(file):
             self._last_dl_files.append(file)
             Logger("Downloading to " + file)
