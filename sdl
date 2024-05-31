@@ -5,11 +5,12 @@ from telethon import TelegramClient, events, tl
 from googlesearch import search
 from pyfzf.pyfzf import FzfPrompt
 
+import configparser
 import subprocess
 import asyncio
-import configparser
-import re
+import time
 import sys
+import re
 import os
 
 Config_Dir = "${HOME}/.config/sdl"
@@ -18,6 +19,10 @@ Api_Id = None
 Api_Hash = None
 
 Music_Dir = None
+
+MIN_CHUNK_SIZE = 4096
+CHUNK_COUNT = 256
+REQUEST_SIZE = MIN_CHUNK_SIZE * CHUNK_COUNT
 
 def Logger(msg, level = "LOG"):
     print(msg)
@@ -194,30 +199,71 @@ class SpotDownload:
         subprocess.run(lrccmd + self._last_dl_files)
         subprocess.run(termuxcmd + self._last_dl_files)
 
+    def _to_mb_str_bytes(self, size):
+        return "%05.2f MB"%((size / 1024) / 1024)
+
     def _prog_callback(self, current, total):
-        # erases the line and moves to the first column
-        print("", end = "\r")
-        print('Downloaded', "%05.2f"%(current / 1000000) + "MB",
-              'out of', "%05.2f"%(total / 1000000) + "MB" +
-              ":% 6.2f%%"%(current / total * 100), end = "")
+        time_taken = time.time() - self._dl_start_time
+        speed_kb = "%d KB/s" % (int((current / time_taken) / 1024))
+        percent = "% 6.2f%%" % (current / total * 100)
+        bars = int((current / total * 100) / 5)
+        bar_str = f' {"#"*bars:<20} '
+
+        print(percent + bar_str + speed_kb + " | " + self._to_mb_str_bytes(current) + " / " + self._to_mb_str_bytes(total), end = "\r")
 
     async def _download_audio (self, msg):
 
-        file = ""
+        file_name = ""
         for i in msg.file.name:
             if i == "\"" or i == ":" or i == "?":
-                file = file + " "
+                file_name = file_name + " "
             else:
-                file = file + i
-        file = Music_Dir + "/" + file
-        if not os.path.isfile(file):
-            self._last_dl_files.append(file)
-            Logger("Downloading to " + file)
-            await msg.download_media(file, progress_callback = self._prog_callback)
-            print("")
-        else:
-            Logger("File exists, skipping the download", "WARN")
+                file_name = file_name + i
+        file_name = Music_Dir + "/" + file_name
 
+        if os.path.isfile(file_name):
+            Logger("File exists, skipping the download", "WARN")
+            return
+
+        self._last_dl_files.append(file_name)
+
+        tmp_file_fd = None
+        download_size = 0
+
+        tmp_file_name = Music_Dir + "/" + str(msg.document.id) + ".temp"
+
+        if os.path.isfile(tmp_file_name):
+            Logger("Temp file exists, resuming download...")
+            tmp_file_fd = open(tmp_file_name, "ab")
+            download_size = tmp_file_fd.tell()
+            if msg.document.size == download_size:
+                Logger("File is already downloaded")
+            elif int(download_size / REQUEST_SIZE) * REQUEST_SIZE != download_size:
+                Logger(
+                    "Temp file size is not a multiple o REQUEST_SIZE\n"
+                        + "Request Size: " + str(REQUEST_SIZE)
+                        + ", Downloaded Size: " + str(download_size)
+                )
+        else:
+            Logger("Starting a fresh download...")
+            tmp_file_fd = open(tmp_file_name, "wb")
+
+        print("File: " + file_name + " | Size: " + self._to_mb_str_bytes(msg.document.size))
+
+        self._dl_start_time = time.time()
+        async for chunk in self.client.iter_download(
+            msg.document, offset = download_size, request_size = REQUEST_SIZE):
+            download_size += len(chunk)
+            tmp_file_fd.write(chunk)
+            self._prog_callback(download_size, msg.document.size)
+        print("")
+
+        tmp_file_fd.close()
+
+        if download_size == msg.document.size:
+            os.rename(tmp_file_name, file_name)
+        else:
+            Logger("Size of the downloaded file doesn't match with the size from Telegram,\nprobably corrupted", "WARN")
 
         # print("name: ", msg.file.name)
         # print("ext: ", msg.file.ext)
@@ -231,10 +277,12 @@ class SpotDownload:
 
     async def _download_audio_files (self):
 
+        print("")
         for msg in self._download_list:
             await self._download_audio(msg)
+        print("")
 
-        self.client.disconnect()
+        await self.client.disconnect()
 
     async def _album_dl_handler (self, event):
         await event.mark_read()
