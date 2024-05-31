@@ -2,9 +2,9 @@
 
 from telethon import TelegramClient, events, tl
 
-from googlesearch import search
 from pyfzf.pyfzf import FzfPrompt
 from mutagen.id3 import ID3, USLT, TPE1
+from bs4 import BeautifulSoup
 
 import configparser
 import subprocess
@@ -36,6 +36,9 @@ class SpotQuery:
 
     _re_pat = None
     _fzf = None
+    _headers = {"user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/5.15.3 Chrome/87.0.4280.144 Safari/537.36"}
+
+
 
     def __init__ (self, query):
         if SpotQuery._re_pat is None:
@@ -54,6 +57,18 @@ class SpotQuery:
 
         return int(line[0:end])
 
+    def _create_url (self, query):
+
+        new = ""
+        for i in query:
+            if i == " ":
+                new = new + "+"
+            else:
+                new = new + i
+        query = new
+
+        return "https://www.google.com/search?q=" + query + "+site%3Aspotify.com&ei=JVlSYtHCA-6MseMPwNGeiAc&ved=0ahUKEwiR6fbF0Ij3AhVuRmwGHcCoB3EQ4dUDCA4&uact=5&oq=" + query + "+site%3Aspotify.com&gs_lcp=Cgdnd3Mtd2l6EANKBAhBGABKBAhGGABQAFi1c2C5dmgEcAF4AIAByQGIAfkikgEGMC4zMC4xmAEAoAEBwAEB&sclient=gws-wiz"
+
     def query_spotify_links (self, query = None):
 
         if query:
@@ -61,23 +76,38 @@ class SpotQuery:
 
         self.query_results = []
 
-        for res in search("spotify " + self.query, advanced = True, num_results = 5):
-            mat = self._re_pat.match(res.url)
+        url = self._create_url(query)
 
-            if mat is not None:
+        res = requests.get(url, headers = self._headers)
+
+        if not res.ok:
+            Logger("Google query failed", "WARN")
+            return
+
+        soup = BeautifulSoup(res.text, "html.parser")
+
+        for h3 in soup.find_all("h3"):
+            if h3.parent.has_attr("href"):
+                title = re.sub("spotify.*", "", h3.parent.text)
+                mat = self._re_pat.match(h3.parent["href"])
+
+                if mat is None:
+                    continue
+
                 groups = mat.groups()
-                if groups[1] == "album" or groups[1] == "track" and groups[2] is None:
-                    if groups[1] == "album":
-                        res_type = "Album"
-                    else:
-                        res_type = "Track"
 
-                    self.query_results.append({
-                        "url": groups[0],
-                        "type": res_type,
-                        "title": res.title,
-                        "description": res.description
-                    })
+                if groups[1] == "album":
+                    res_type = "Album"
+                elif groups[1] == "track":
+                    res_type = "Track"
+                else:
+                    continue
+
+                self.query_results.append({
+                    "url": groups[0],
+                    "type": res_type,
+                    "title": title
+                })
 
         return self.query_results
 
@@ -125,27 +155,6 @@ class SpotQuery:
         if result is None:
             result = self.selected_query_result
         return result["title"]
-
-    def get_description (self, result = None):
-        if result is None:
-            result = self.selected_query_result
-        return result["description"]
-
-
-# qry = SpotQuery("wild love jonathan")
-#
-# print(qry.get_title())
-# print(qry.get_type())
-# print(qry.get_description())
-# print(qry.get_url())
-
-
-
-# client = TelegramClient('anon', api_id, api_hash)
-
-# The first parameter is the .session file name (absolute paths allowed)
-# with TelegramClient('anon', api_id, api_hash) as client:
-#     client.loop.run_until_complete(client.send_message('deezload2bot', 'Hello its mejdjdjj'))
 
 class SpotDownload:
 
@@ -267,16 +276,6 @@ class SpotDownload:
             os.rename(tmp_file_name, file_name)
         else:
             Logger("Size of the downloaded file doesn't match with the size from Telegram,\nprobably corrupted", "WARN")
-
-        # print("name: ", msg.file.name)
-        # print("ext: ", msg.file.ext)
-        # print("mime_type: ", msg.file.mime_type)
-        # print("width: ", msg.file.width)
-        # print("height: ", msg.file.height)
-        # print("size: ", msg.file.size)
-        # print("duration: ", msg.file.duration)
-        # print("title: ", msg.file.title)
-        # print("performer: ", msg.file.performer)
 
     async def _download_audio_files (self):
 
@@ -642,6 +641,6 @@ def main():
 
     return
 
-# main()
-lrc = SpotLrc(".")
-lrc.get_lrc(["in.mp3"])
+main()
+# lrc = SpotLrc(".")
+# lrc.get_lrc(["in.mp3"])
