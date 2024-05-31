@@ -446,54 +446,64 @@ class SpotDownload:
         self.client.start()
         self.client.loop.run_until_complete(self._download(link_list))
 
+def main():
 
-Config_Dir = os.path.expandvars(Config_Dir)
+    global Config_Dir
+    global Music_Dir
+    global Api_Id
+    global Api_Hash
 
-config_file = Config_Dir + "/config.ini"
-if not os.path.isfile(config_file):
-    print("Config file is not present: " + config_file)
-    print("Inorder to sdl to work, you need the Telegram Api Id and Hash")
-    print("Exiting...")
-    exit()
+    Config_Dir = os.path.expandvars(Config_Dir)
 
-config = configparser.ConfigParser()
-config.read(config_file)
+    config_file = Config_Dir + "/config.ini"
+    if not os.path.isfile(config_file):
+        print("Config file is not present: " + config_file)
+        print("Inorder to sdl to work, you need the Telegram Api Id and Hash")
+        print("Exiting...")
+        exit()
 
-Music_Dir = os.path.expandvars(config["download"]["Dir"])
+    config = configparser.ConfigParser()
+    config.read(config_file)
 
-if not os.path.isdir(Music_Dir):
-    print("Directory doesn't exists: " + Music_Dir)
-    print("Please make sure you have specified the right directory to download files.")
-    print("Exiting...")
-    exit()
+    Music_Dir = os.path.expandvars(config["download"]["Dir"])
 
-Api_Id = int(config["telegram.api"]["Id"])
-Api_Hash = config["telegram.api"]["Hash"]
+    if not os.path.isdir(Music_Dir):
+        print("Directory doesn't exists: " + Music_Dir)
+        print("Please make sure you have specified the right directory to download files.")
+        print("Exiting...")
+        exit()
 
-# TODO: download directly from links
-# pat = re.compile("^(https://open\.spotify\.com/(.+)/.{22})(\?)?(.*)$")
+    Api_Id = int(config["telegram.api"]["Id"])
+    Api_Hash = config["telegram.api"]["Hash"]
 
-query = ""
+    # TODO: download directly from links
+    # pat = re.compile("^(https://open\.spotify\.com/(.+)/.{22})(\?)?(.*)$")
 
-if len(sys.argv) > 1:
+    query = ""
 
-    query = sys.argv[1]
+    if len(sys.argv) > 1:
 
-    for arg in sys.argv[2:]:
-        query = query + " " + arg
-else:
-    print("Query: ", end = "")
-    query = input()
+        query = sys.argv[1]
 
-if query == "":
-    Logger("No query, exiting...")
-    exit()
+        for arg in sys.argv[2:]:
+            query = query + " " + arg
+    else:
+        print("Query: ", end = "")
+        query = input()
 
-squery = SpotQuery(query)
+    if query == "":
+        Logger("No query, exiting...")
+        exit()
 
-if squery.gen_result() is None:
-    Logger("No selections were generated, exiting...")
-    exit()
+    squery = SpotQuery(query)
 
-sdl = SpotDownload(Config_Dir + "/anon", Api_Id, Api_Hash)
-sdl.download([(squery.get_url(), squery.get_type())])
+    if squery.gen_result() is None:
+        Logger("No selections were generated, exiting...")
+        exit()
+
+    sdl = SpotDownload(Config_Dir + "/anon", Api_Id, Api_Hash)
+    sdl.download([(squery.get_url(), squery.get_type())])
+
+    return
+
+main()
