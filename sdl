@@ -4,10 +4,14 @@ from telethon import TelegramClient, events, tl
 
 from googlesearch import search
 from pyfzf.pyfzf import FzfPrompt
+from mutagen.id3 import ID3, USLT, TPE1
 
 import configparser
 import subprocess
+import requests
 import asyncio
+import urllib
+import json
 import time
 import sys
 import re
@@ -19,6 +23,7 @@ Api_Id = None
 Api_Hash = None
 
 Music_Dir = None
+Lyrics_Dir = None
 
 MIN_CHUNK_SIZE = 4096
 CHUNK_COUNT = 256
@@ -56,7 +61,7 @@ class SpotQuery:
 
         self.query_results = []
 
-        for res in search("spotify " + self.query, advanced = True, num_results = 10):
+        for res in search("spotify " + self.query, advanced = True, num_results = 5):
             mat = self._re_pat.match(res.url)
 
             if mat is not None:
@@ -193,10 +198,8 @@ class SpotDownload:
             Logger("It seems like no files have been downloaded.", "WARN")
             return
 
-        lrccmd = ["glrclib", "--verbose", "--files"]
         termuxcmd = ["termux-media-scan"]
 
-        subprocess.run(lrccmd + self._last_dl_files)
         subprocess.run(termuxcmd + self._last_dl_files)
 
     def _to_mb_str_bytes(self, size):
@@ -221,11 +224,11 @@ class SpotDownload:
                 file_name = file_name + i
         file_name = Music_Dir + "/" + file_name
 
+        self._last_dl_files.append(file_name)
+
         if os.path.isfile(file_name):
             Logger("File exists, skipping the download", "WARN")
             return
-
-        self._last_dl_files.append(file_name)
 
         tmp_file_fd = None
         download_size = 0
@@ -445,11 +448,133 @@ class SpotDownload:
 
         self.client.start()
         self.client.loop.run_until_complete(self._download(link_list))
+        return self._last_dl_files
+
+class SpotLrc():
+
+    _url_base = "https://lrclib.net/api/search?"
+
+    def __init__ (self, lrc_dir):
+        if os.path.isdir(lrc_dir):
+            self.lrc_dir = lrc_dir
+            try:
+                os.mkdir(lrc_dir + "/json")
+            except FileExistsError:
+                pass
+            try:
+                os.mkdir(lrc_dir + "/lyrics")
+            except FileExistsError:
+                pass
+            try:
+                os.mkdir(lrc_dir + "/plain")
+            except FileExistsError:
+                pass
+        else:
+            Logger("Directory doesn't exists.")
+        pass
+
+    def _fix_artist (self, file):
+
+        artists = file["TPE1"].text[0]
+        new_artists = ""
+        write = False
+
+        for char in artists:
+            if char == "/":
+                write = True
+                new_artists = new_artists + ","
+            else:
+                new_artists = new_artists + char
+
+        if write:
+            file["TPE1"] = TPE1(text = new_artists)
+
+        return
+
+    def get_lrc (self, file_list):
+
+        track_name = None
+        artist_name = None
+        album_name = None
+        duration = None
+
+        params = None
+        url = None
+
+        file_stem = None
+
+        for file_path in file_list:
+
+            file = ID3(file_path)
+
+            file_stem = os.path.splitext(os.path.basename(file_path))[0]
+
+            self._fix_artist(file)
+            track_name = file["TIT2"].text[0]
+            artist_name = file["TPE1"].text[0]
+            album_name = file["TALB"].text[0]
+            duration = str(int(int(file["TLEN"].text[0]) / 1000))
+
+            params = urllib.parse.urlencode({
+                "track_name": track_name,
+                "artist_name": artist_name,
+                "album_name": album_name,
+                "duration": duration,
+            })
+
+            url = self._url_base + params
+
+            response = requests.get(url)
+            synced = None
+            plain = None
+
+            if response.ok:
+
+                with open(self.lrc_dir + "/json/" + file_stem + ".json", "w") as tmp_file:
+                    tmp_file.write(response.text)
+
+                Logger("Got response...")
+
+                for result in json.loads(response.text):
+                    if synced is None:
+                        Logger("Got synced lyrics...")
+                        if result["syncedLyrics"] is not None:
+                            synced = re.sub("\] ", "]", result["syncedLyrics"])
+                    if plain is None:
+                        Logger("Got plain lyrics...")
+                        if result["plainLyrics"] is not None:
+                            plain = result["plainLyrics"]
+
+                if synced is not None:
+                    file.add(USLT(text = synced, desc = "synced"))
+                    with open(self.lrc_dir + "/lyrics/" + file_stem + ".lrc", "w") as tmp_file:
+                        tmp_file.write(synced)
+                        tmp_file.write("\n")
+                else:
+                    if plain is not None:
+                        file.add(USLT(text = plain, desc = "plain"))
+                    Logger("Haven't got the synced lyrics")
+
+
+                if plain is not None:
+                    with open(self.lrc_dir + "/lyrics/" + file_stem + ".lrc", "w") as tmp_file:
+                        tmp_file.write(plain)
+                        tmp_file.write("\n")
+                else:
+                    Logger("Haven't got the plain lyrics")
+
+            else:
+                Logger(
+                    "Got no lrc, response status: " + str(response.status_code)
+                )
+
+            file.save()
 
 def main():
 
     global Config_Dir
     global Music_Dir
+    global Lyrics_Dir
     global Api_Id
     global Api_Hash
 
@@ -465,11 +590,19 @@ def main():
     config = configparser.ConfigParser()
     config.read(config_file)
 
-    Music_Dir = os.path.expandvars(config["download"]["Dir"])
+    Music_Dir = os.path.expandvars(config["download"]["MusicDir"])
 
     if not os.path.isdir(Music_Dir):
         print("Directory doesn't exists: " + Music_Dir)
         print("Please make sure you have specified the right directory to download files.")
+        print("Exiting...")
+        exit()
+
+    Lyrics_Dir = os.path.expandvars(config["download"]["LyricsDir"])
+
+    if not os.path.isdir(Lyrics_Dir):
+        print("Directory doesn't exists: " + Lyrics_Dir)
+        print("Please make sure you have specified the right directory to download lyrics.")
         print("Exiting...")
         exit()
 
@@ -502,8 +635,13 @@ def main():
         exit()
 
     sdl = SpotDownload(Config_Dir + "/anon", Api_Id, Api_Hash)
-    sdl.download([(squery.get_url(), squery.get_type())])
+    downloaded_list = sdl.download([(squery.get_url(), squery.get_type())])
+
+    lrc = SpotLrc(Lyrics_Dir)
+    lrc.get_lrc(downloaded_list)
 
     return
 
-main()
+# main()
+lrc = SpotLrc(".")
+lrc.get_lrc(["in.mp3"])
