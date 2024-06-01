@@ -556,7 +556,7 @@ class SpotLrc():
 
         pe_tbl.append({
             "param": param,
-            "error": "Got an empty response again, trying again with the cleaned album name..."
+            "error": "Got an empty response again, trying again with track name and the cleaned album name..."
         })
 
         ####
@@ -565,7 +565,7 @@ class SpotLrc():
         cleaned_album_name = re.sub("[^a-zA-Z0-9 ]", "", cleaned_album_name)
 
         param = urllib.parse.urlencode({
-            "q": cleaned_album_name,
+            "q": track_name + "+" + cleaned_album_name,
         })
 
         pe_tbl.append({
