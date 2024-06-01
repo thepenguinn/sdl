@@ -732,33 +732,64 @@ def parse_config():
 
 def download():
 
-    # TODO: download directly from links
-    # pat = re.compile("^(https://open\.spotify\.com/(.+)/.{22})(\?)?(.*)$")
+    pat = re.compile("^(https://open\.spotify\.com/(.+)/.{22})(\?)?(.*)$")
 
     query = ""
+    downloaded_list = None
 
-    if len(sys.argv) > 1:
+    if len(sys.argv) == 2 and (sys.argv[1] == "--clip" or sys.argv[1] == "-c"):
+        clip = subprocess.Popen(
+            ["termux-clipboard-get"], stdout = subprocess.PIPE
+        )
 
-        query = sys.argv[1]
+        clip = clip.stdout.read().decode()
 
-        for arg in sys.argv[2:]:
-            query = query + " " + arg
+        mat = pat.match(clip)
+
+        if mat is not None:
+
+            url_type = None
+
+            grps = mat.groups()
+
+            if grps[1] == "album":
+                url_type = "Album"
+            elif grps[1] == "track":
+                url_type = "Track"
+            else:
+                Logger("Currently only albums and tracks can be downloaded, exiting...")
+                Logger("Clipboard contents: \"" + clip + "\"")
+                exit()
+        else:
+            Logger("Clipboard does not contain a valid url, exiting...")
+            Logger("Clipboard contents: \"" + clip + "\"")
+            exit()
+
+        sdl = SpotDownload(Config_Dir + "/anon", Api_Id, Api_Hash)
+        downloaded_list = sdl.download([(grps[0], url_type)])
     else:
-        print("Query: ", end = "")
-        query = input()
+        if len(sys.argv) > 1:
 
-    if query == "":
-        Logger("No query, exiting...")
-        exit()
+            query = sys.argv[1]
 
-    squery = SpotQuery(query)
+            for arg in sys.argv[2:]:
+                query = query + " " + arg
+        else:
+            print("Query: ", end = "")
+            query = input()
 
-    if squery.gen_result() is None:
-        Logger("No selections were generated, exiting...")
-        exit()
+        if query == "":
+            Logger("No query, exiting...")
+            exit()
 
-    sdl = SpotDownload(Config_Dir + "/anon", Api_Id, Api_Hash)
-    downloaded_list = sdl.download([(squery.get_url(), squery.get_type())])
+        squery = SpotQuery(query)
+
+        if squery.gen_result() is None:
+            Logger("No selections were generated, exiting...")
+            exit()
+
+        sdl = SpotDownload(Config_Dir + "/anon", Api_Id, Api_Hash)
+        downloaded_list = sdl.download([(squery.get_url(), squery.get_type())])
 
     lrc = SpotLrc(Lyrics_Dir)
     lrc.get_lrc(downloaded_list)
@@ -787,5 +818,6 @@ else:
     download()
 
 
+# https://open.spotify.com/track/2Fxmhks0bxGSBdJ92vM42m
 # lrc = SpotLrc(".")
 # lrc.get_lrc(["/data/data/com.termux/files/home/storage/shared/Music/sdl/Emei - Scatterbrain.mp3"])
