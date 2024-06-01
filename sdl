@@ -524,6 +524,7 @@ class SpotLrc():
 
         pe_tbl = []
 
+        ####
         param = urllib.parse.urlencode({
             "track_name": track_name,
             "artist_name": artist_name,
@@ -536,6 +537,7 @@ class SpotLrc():
             "error": "Got an empty response, trying again with the track name and artist name..."
         })
 
+        ####
         param = urllib.parse.urlencode({
             "track_name": track_name,
             "artist_name": artist_name,
@@ -543,9 +545,35 @@ class SpotLrc():
 
         pe_tbl.append({
             "param": param,
+            "error": "Got an empty response, trying again with the track name and album name..."
+        })
+
+        ####
+        param = urllib.parse.urlencode({
+            "track_name": track_name,
+            "album_name": album_name,
+        })
+
+        pe_tbl.append({
+            "param": param,
+            "error": "Got an empty response again, trying again with the cleaned album name..."
+        })
+
+        ####
+        cleaned_album_name = re.sub("\(( *)?From ?", "", album_name)
+        cleaned_album_name = re.sub(" ?\)", "", cleaned_album_name)
+        cleaned_album_name = re.sub("[^a-zA-Z0-9 ]", "", cleaned_album_name)
+
+        param = urllib.parse.urlencode({
+            "q": cleaned_album_name,
+        })
+
+        pe_tbl.append({
+            "param": param,
             "error": "Got an empty response again, trying again with just the track name..."
         })
 
+        ####
         param = urllib.parse.urlencode({
             "track_name": track_name
         })
@@ -555,8 +583,9 @@ class SpotLrc():
             "error": "Still got an empty response, cleaning the title and trying once more..."
         })
 
+        ####
         cleaned_track_name = re.sub(" ?\(.*\) ?", "", track_name)
-        cleaned_track_name = re.sub("[^a-zA-Z0-9]", "", cleaned_track_name)
+        cleaned_track_name = re.sub("[^a-zA-Z0-9 ]", "", cleaned_track_name)
 
         param = urllib.parse.urlencode({
             "track_name": cleaned_track_name
