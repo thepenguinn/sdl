@@ -569,6 +569,16 @@ class SpotLrc():
 
         return pe_tbl
 
+    def _del_uslt_tags (self, file):
+
+        tags_to_del = []
+
+        for key in file.keys():
+            if key[0:4] == "USLT":
+                tags_to_del.append(key)
+
+        for key in tags_to_del:
+            file.pop(key)
 
     def get_lrc (self, file_list):
 
@@ -585,7 +595,13 @@ class SpotLrc():
 
             file_stem = os.path.splitext(os.path.basename(file_path))[0]
 
+            Logger(file_path)
+            Logger("Querying for " + file["TIT2"].text[0] + " - " + file["TPE1"].text[0] + "...")
+
+            Logger("Fixing artists...")
             self._fix_artist(file)
+            Logger("Deleting other USLT tags...")
+            self._del_uslt_tags(file)
 
             track_name = file["TIT2"].text[0]
             artist_name = file["TPE1"].text[0]
@@ -602,9 +618,6 @@ class SpotLrc():
             synced = None
             plain = None
             response = None
-
-            Logger(file_path)
-            Logger("Querying for " + file["TIT2"].text[0] + " - " + file["TPE1"].text[0] + "...")
 
             for pe in pe_tbl:
                 res = self._query_lrclib(pe["param"])
