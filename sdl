@@ -173,6 +173,7 @@ class SpotDownload:
         self._download_list = None
         self._clicked_button = False
         self._last_dl_files = None
+        self._last_playlist_dl_count = 0
 
     def _set_last_album_info(self, msg_text):
 
@@ -379,6 +380,41 @@ class SpotDownload:
             )
             await self._download_audio_files()
 
+    async def _playlist_dl_handler (self, event):
+        await event.mark_read()
+        if event.message.message == "Invalid link ;)":
+            Logger("Link was Invalid. Disconnecting...")
+            self._last_dl_status = "Failed"
+            await self.client.disconnect()
+
+        if event.buttons:
+            if self._clicked_button:
+                Logger("Got another message with buttons.", "WARN")
+                if event.message.message == "Downloading…":
+                    Logger("Its the Downloading message")
+                else:
+                    Logger("Its not the Downloading message", "WARN")
+                return
+
+            if event.buttons[0][0].text == "GET ALL ⬇️":
+                Logger("Clicking GET ALL button")
+                self._clicked_button = True
+                await event.buttons[0][0].click()
+        elif event.audio:
+            self._download_list.append(event)
+            self._last_playlist_dl_count += 1
+        elif event.message.message == "Finished.":
+            Logger("Downloaded all the tracks. Disconnecting...")
+            self._last_dl_status = "Success"
+            Logger("Dettaching playlist download handler...")
+            self.client.remove_event_handler(
+                self._playlist_dl_handler
+            )
+            # print(self._last_playlist_dl_count)
+            await self._download_audio_files()
+        else:
+            Logger("Recieved some other message", "WARN")
+            print(event.message.message)
 
     async def _download (self, link_list):
 
@@ -407,13 +443,22 @@ class SpotDownload:
                 self._last_album_artist = ""
                 self._last_album_dl_count = 0
                 self._clicked_button = False
-            else:
+            elif link_type == "Track":
                 Logger("Attaching track download handler...")
                 self.client.add_event_handler(
                     self._track_dl_handler,
                     events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
                 )
                 self._one_track_recieved = False
+            elif link_type == "Playlist":
+                Logger("Attaching playlist download handler...")
+                self.client.add_event_handler(
+                    self._playlist_dl_handler,
+                    events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
+                )
+                self._clicked_button = False
+                self._last_playlist_dl_count = 0
+
 
             self._last_dl_status = None
             self._last_dl_files = []
@@ -432,10 +477,15 @@ class SpotDownload:
                     self.client.remove_event_handler(
                         self._track_dl_handler
                     )
-                else:
+                elif link_type == "Track":
                     Logger("Dettaching album download handler...")
                     self.client.remove_event_handler(
                         self._album_dl_handler
+                    )
+                elif link_type == "Playlist":
+                    Logger("Dettaching playlist download handler...")
+                    self.client.remove_event_handler(
+                        self._playlist_dl_handler
                     )
                 Logger("Failed downloading the file(s)", "WARN")
             else:
@@ -756,6 +806,8 @@ def download():
                 url_type = "Album"
             elif grps[1] == "track":
                 url_type = "Track"
+            elif grps[1] == "playlist":
+                url_type = "Playlist"
             else:
                 Logger("Currently only albums and tracks can be downloaded, exiting...")
                 Logger("Clipboard contents: \"" + clip + "\"")
@@ -817,6 +869,10 @@ if len(sys.argv) == 2 and (sys.argv[1] == "--lrc" or sys.argv[1] == "-l"):
 else:
     download()
 
+# sdl = SpotDownload(Config_Dir + "/anon", Api_Id, Api_Hash)
+# downloaded_list = sdl.download(
+#     [("https://open.spotify.com/playlist/2oyDrQfkkSMdyXPXKKHm1t", "Playlist")]
+# )
 
 # https://open.spotify.com/track/2Fxmhks0bxGSBdJ92vM42m
 # lrc = SpotLrc(".")
