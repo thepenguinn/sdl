@@ -233,11 +233,11 @@ class SpotDownload:
                 file_name = file_name + i
         file_name = Music_Dir + "/" + file_name
 
-        self._last_dl_files.append(file_name)
-
         if os.path.isfile(file_name):
             Logger("File exists, skipping the download", "WARN")
             return
+
+        self._last_dl_files.append(file_name)
 
         tmp_file_fd = None
         download_size = 0
@@ -521,55 +521,94 @@ class SpotLrc():
                 "duration": duration,
             })
 
+            Logger(file_path)
+            Logger("Querying for " + file["TIT2"].text[0] + " - " + file["TPE1"].text[0] + "...")
             url = self._url_base + params
 
             response = requests.get(url)
             synced = None
             plain = None
 
-            if response.ok:
-
-                with open(self.lrc_dir + "/json/" + file_stem + ".json", "w") as tmp_file:
-                    tmp_file.write(response.text)
-
-                Logger("Got response...")
-
-                for result in json.loads(response.text):
-                    if synced is None:
-                        Logger("Got synced lyrics...")
-                        if result["syncedLyrics"] is not None:
-                            synced = re.sub("\] ", "]", result["syncedLyrics"])
-                    if plain is None:
-                        Logger("Got plain lyrics...")
-                        if result["plainLyrics"] is not None:
-                            plain = result["plainLyrics"]
-
-                if synced is not None:
-                    file.add(USLT(text = synced, desc = "synced"))
-                    with open(self.lrc_dir + "/lyrics/" + file_stem + ".lrc", "w") as tmp_file:
-                        tmp_file.write(synced)
-                        tmp_file.write("\n")
-                else:
-                    if plain is not None:
-                        file.add(USLT(text = plain, desc = "plain"))
-                    Logger("Haven't got the synced lyrics")
-
-
-                if plain is not None:
-                    with open(self.lrc_dir + "/lyrics/" + file_stem + ".lrc", "w") as tmp_file:
-                        tmp_file.write(plain)
-                        tmp_file.write("\n")
-                else:
-                    Logger("Haven't got the plain lyrics")
-
-            else:
+            if not response.ok:
                 Logger(
                     "Got no lrc, response status: " + str(response.status_code)
                 )
+                continue
+
+            if response.text == "[]":
+                Logger(
+                    "Got an empty response, trying again with the track name and artist name..."
+                )
+
+                params = urllib.parse.urlencode({
+                    "track_name": track_name,
+                    "artist_name": artist_name
+                })
+                url = self._url_base + params
+                response = requests.get(url)
+
+                if not response.ok:
+                    Logger(
+                        "Got no lrc, response status: " + str(response.status_code)
+                    )
+                    continue
+
+                if response.text == "[]":
+                    Logger(
+                        "Got an empty response again, trying again with just the track name..."
+                    )
+
+                    params = urllib.parse.urlencode({
+                        "track_name": track_name
+                    })
+                    url = self._url_base + params
+                    response = requests.get(url)
+
+                    if not response.ok:
+                        Logger(
+                            "Got no lrc, response status: " + str(response.status_code)
+                        )
+                        continue
+                    if response.text == "[]":
+                        Logger("Still got nothing...")
+                        continue
+
+            with open(self.lrc_dir + "/json/" + file_stem + ".json", "w") as tmp_file:
+                tmp_file.write(response.text)
+
+            Logger("Got response...")
+
+            for result in json.loads(response.text):
+                if synced is None:
+                    Logger("Got synced lyrics...")
+                    if result["syncedLyrics"] is not None:
+                        synced = re.sub("\] ", "]", result["syncedLyrics"])
+                if plain is None:
+                    Logger("Got plain lyrics...")
+                    if result["plainLyrics"] is not None:
+                        plain = result["plainLyrics"]
+
+            if synced is not None:
+                file.add(USLT(text = synced, desc = "synced"))
+                with open(self.lrc_dir + "/lyrics/" + file_stem + ".lrc", "w") as tmp_file:
+                    tmp_file.write(synced)
+                    tmp_file.write("\n")
+            else:
+                if plain is not None:
+                    file.add(USLT(text = plain, desc = "plain"))
+                Logger("Haven't got the synced lyrics")
+
+            if plain is not None:
+                with open(self.lrc_dir + "/plain/" + file_stem + ".lrc", "w") as tmp_file:
+                    tmp_file.write(plain)
+                    tmp_file.write("\n")
+            else:
+                Logger("Haven't got the plain lyrics")
+
 
             file.save()
 
-def main():
+def parse_config():
 
     global Config_Dir
     global Music_Dir
@@ -608,6 +647,9 @@ def main():
     Api_Id = int(config["telegram.api"]["Id"])
     Api_Hash = config["telegram.api"]["Hash"]
 
+
+def download():
+
     # TODO: download directly from links
     # pat = re.compile("^(https://open\.spotify\.com/(.+)/.{22})(\?)?(.*)$")
 
@@ -641,6 +683,27 @@ def main():
 
     return
 
-main()
+# main()
+
+def attach_lrc ():
+
+    fzf = FzfPrompt()
+
+    files = [file for file in os.listdir(Music_Dir) if file[-4:] == ".mp3"]
+    files.sort(key = lambda x: os.path.getmtime(os.path.join(Music_Dir, x)))
+
+    selected = [os.path.join(Music_Dir, file) for file in fzf.prompt(files, "--tac -m")]
+
+    lrc = SpotLrc(Lyrics_Dir)
+    lrc.get_lrc(selected)
+
+parse_config()
+
+if len(sys.argv) == 2 and (sys.argv[1] == "--lrc" or sys.argv[1] == "-l"):
+    attach_lrc()
+else:
+    download()
+
+
 # lrc = SpotLrc(".")
-# lrc.get_lrc(["in.mp3"])
+# lrc.get_lrc(["/data/data/com.termux/files/home/storage/shared/Music/sdl/Emei - Scatterbrain.mp3"])
