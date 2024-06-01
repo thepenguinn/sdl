@@ -490,15 +490,92 @@ class SpotLrc():
 
         return
 
+    def _query_lrclib (self, params):
+
+        synced = None
+        plain = None
+
+        url = self._url_base + params
+        response = requests.get(url)
+        if not response.ok:
+            Logger(
+                "Got no lrc, response status: " + str(response.status_code)
+            )
+            return (None, None, None)
+
+        Logger("Got a response...")
+
+        if response.text == "[]":
+            return (None, None, None)
+
+        for result in json.loads(response.text):
+            if synced is None:
+                if result["syncedLyrics"] is not None:
+                    Logger("Got a synced lyrics...")
+                    synced = re.sub("\] ", "]", result["syncedLyrics"])
+            if plain is None:
+                if result["plainLyrics"] is not None:
+                    Logger("Got a plain lyrics...")
+                    plain = result["plainLyrics"]
+
+        return (synced, plain, response)
+
+    def _create_pe_tbl (self, track_name, artist_name, album_name, duration):
+
+        pe_tbl = []
+
+        param = urllib.parse.urlencode({
+            "track_name": track_name,
+            "artist_name": artist_name,
+            "album_name": album_name,
+            "duration": duration
+        })
+
+        pe_tbl.append({
+            "param": param,
+            "error": "Got an empty response, trying again with the track name and artist name..."
+        })
+
+        param = urllib.parse.urlencode({
+            "track_name": track_name,
+            "artist_name": artist_name,
+        })
+
+        pe_tbl.append({
+            "param": param,
+            "error": "Got an empty response again, trying again with just the track name..."
+        })
+
+        param = urllib.parse.urlencode({
+            "track_name": track_name
+        })
+
+        pe_tbl.append({
+            "param": param,
+            "error": "Still got an empty response, cleaning the title and trying once more..."
+        })
+
+        cleaned_track_name = re.sub(" ?\(.*\) ?", "", track_name)
+        cleaned_track_name = re.sub("[^a-zA-Z0-9]", "", cleaned_track_name)
+
+        param = urllib.parse.urlencode({
+            "track_name": cleaned_track_name
+        })
+
+        pe_tbl.append({
+            "param": param,
+            "error": "Sorry, still got nothing..."
+        })
+
+        return pe_tbl
+
+
     def get_lrc (self, file_list):
 
         track_name = None
         artist_name = None
         album_name = None
         duration = None
-
-        params = None
-        url = None
 
         file_stem = None
 
@@ -509,102 +586,47 @@ class SpotLrc():
             file_stem = os.path.splitext(os.path.basename(file_path))[0]
 
             self._fix_artist(file)
+
             track_name = file["TIT2"].text[0]
             artist_name = file["TPE1"].text[0]
             album_name = file["TALB"].text[0]
             duration = str(int(int(file["TLEN"].text[0]) / 1000))
 
-            params = urllib.parse.urlencode({
-                "track_name": track_name,
-                "artist_name": artist_name,
-                "album_name": album_name,
-                "duration": duration,
-            })
+            pe_tbl = self._create_pe_tbl(
+                track_name,
+                artist_name,
+                album_name,
+                duration
+            )
+
+            synced = None
+            plain = None
+            response = None
 
             Logger(file_path)
             Logger("Querying for " + file["TIT2"].text[0] + " - " + file["TPE1"].text[0] + "...")
-            url = self._url_base + params
 
-            response = requests.get(url)
-            synced = None
-            plain = None
+            for pe in pe_tbl:
+                res = self._query_lrclib(pe["param"])
 
-            if not response.ok:
-                Logger(
-                    "Got no lrc, response status: " + str(response.status_code)
-                )
-                continue
-
-            if response.text == "[]":
-                Logger(
-                    "Got an empty response, trying again with the track name and artist name..."
-                )
-
-                params = urllib.parse.urlencode({
-                    "track_name": track_name,
-                    "artist_name": artist_name
-                })
-                url = self._url_base + params
-                response = requests.get(url)
-
-                if not response.ok:
-                    Logger(
-                        "Got no lrc, response status: " + str(response.status_code)
-                    )
-                    continue
-
-                if response.text == "[]":
-                    Logger(
-                        "Got an empty response again, trying again with just the track name..."
-                    )
-
-                    params = urllib.parse.urlencode({
-                        "track_name": track_name
-                    })
-                    url = self._url_base + params
-                    response = requests.get(url)
-
-                    if not response.ok:
-                        Logger(
-                            "Got no lrc, response status: " + str(response.status_code)
-                        )
-                        continue
-                    if response.text == "[]":
-                        Logger("Still got nothing, cleaning the title and trying once more...")
-
-                        cleaned_track_name = re.sub(" ?\(.*\) ?", "", track_name)
-                        cleaned_track_name = re.sub("[^a-zA-Z0-9]", "", cleaned_track_name)
-
-                        params = urllib.parse.urlencode({
-                            "track_name": cleaned_track_name
-                        })
-                        url = self._url_base + params
-                        response = requests.get(url)
-
-                        if not response.ok:
-                            Logger(
-                                "Got no lrc, response status: " + str(response.status_code)
-                            )
-                            continue
-                        if response.text == "[]":
-                            Logger("Sorry, still got nothing...")
-                            continue
-
-            with open(self.lrc_dir + "/json/" + file_stem + ".json", "w") as tmp_file:
-                tmp_file.write(response.text)
-
-            Logger("Got response...")
-
-            for result in json.loads(response.text):
                 if synced is None:
-                    Logger("Got synced lyrics...")
-                    if result["syncedLyrics"] is not None:
-                        Logger("Got synced lyrics...")
-                        synced = re.sub("\] ", "]", result["syncedLyrics"])
+                    synced = res[0]
+
                 if plain is None:
-                    if result["plainLyrics"] is not None:
-                        Logger("Got plain lyrics...")
-                        plain = result["plainLyrics"]
+                    plain = res[1]
+
+                response = res[2]
+                if synced is None or plain is None:
+                    Logger(pe["error"])
+                else:
+                    break
+
+            if response is not None:
+                # TODO: give proper file names instead to slamming file_stem
+                with open(self.lrc_dir + "/json/" + file_stem + ".json", "w") as tmp_file:
+                    tmp_file.write(response.text)
+            else:
+                Logger("No response at all, weird...", "WARN")
 
             if synced is not None:
                 file.add(USLT(text = synced, desc = "synced"))
@@ -612,17 +634,17 @@ class SpotLrc():
                     tmp_file.write(synced)
                     tmp_file.write("\n")
             else:
+                Logger("Haven't got the synced lyrics...")
+
                 if plain is not None:
                     file.add(USLT(text = plain, desc = "plain"))
-                Logger("Haven't got the synced lyrics")
 
             if plain is not None:
                 with open(self.lrc_dir + "/plain/" + file_stem + ".lrc", "w") as tmp_file:
                     tmp_file.write(plain)
                     tmp_file.write("\n")
             else:
-                Logger("Haven't got the plain lyrics")
-
+                Logger("Haven't got the plain lyrics...")
 
             file.save()
 
