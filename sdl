@@ -570,8 +570,25 @@ class SpotLrc():
                         )
                         continue
                     if response.text == "[]":
-                        Logger("Still got nothing...")
-                        continue
+                        Logger("Still got nothing, cleaning the title and trying once more...")
+
+                        cleaned_track_name = re.sub(" ?\(.*\) ?", "", track_name)
+                        cleaned_track_name = re.sub("[^a-zA-Z0-9]", "", cleaned_track_name)
+
+                        params = urllib.parse.urlencode({
+                            "track_name": cleaned_track_name
+                        })
+                        url = self._url_base + params
+                        response = requests.get(url)
+
+                        if not response.ok:
+                            Logger(
+                                "Got no lrc, response status: " + str(response.status_code)
+                            )
+                            continue
+                        if response.text == "[]":
+                            Logger("Sorry, still got nothing...")
+                            continue
 
             with open(self.lrc_dir + "/json/" + file_stem + ".json", "w") as tmp_file:
                 tmp_file.write(response.text)
@@ -582,10 +599,11 @@ class SpotLrc():
                 if synced is None:
                     Logger("Got synced lyrics...")
                     if result["syncedLyrics"] is not None:
+                        Logger("Got synced lyrics...")
                         synced = re.sub("\] ", "]", result["syncedLyrics"])
                 if plain is None:
-                    Logger("Got plain lyrics...")
                     if result["plainLyrics"] is not None:
+                        Logger("Got plain lyrics...")
                         plain = result["plainLyrics"]
 
             if synced is not None:
