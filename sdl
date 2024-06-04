@@ -782,7 +782,7 @@ def parse_config():
 
 def download():
 
-    pat = re.compile("^(https://open\.spotify\.com/(.+)/.{22})(\?)?(.*)$")
+    pat = re.compile("^(https://open\.spotify\.com/([^/]+)/.{22})(\?)?(.*)$")
 
     query = ""
     downloaded_list = None
@@ -847,6 +847,10 @@ def download():
     lrc.get_lrc(downloaded_list)
 
     return
+
+# https://open.spotify.com/track/7nHQjVpEncX7NEdA2G6kU1
+# https://open.spotify.com/track/7nHQjVpEncX7NEdA2G6kU1
+
 
 # main()
 
