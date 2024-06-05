@@ -174,7 +174,19 @@ class SpotQuery:
             Logger("Got no tracks", "WARN")
             return None
 
-    def query_by_track_from_spotify (self, track_url):
+    def _is_in (self, val, lis, key):
+
+        idx = -1
+
+        for i in range(len(lis)):
+            if lis[i][key] == val:
+                idx = i
+                break
+
+        return idx
+
+
+    def query_by_track_from_spotify (self, track_url, google_results):
 
         # queries the track from spotify, this hopefully returns
         # the album and the related tracks.
@@ -213,6 +225,17 @@ class SpotQuery:
 
                         if url_list is None:
                             Logger("query_by_album_from_spotify() returned nothing", "WARN")
+
+                        idx = self._is_in(url_list[0]["url"], google_results, "url")
+
+                        if idx > -1:
+                            Logger("This url is in the google results")
+                            if len(google_results[idx]["title"]) < len(url_list[0]["title"]):
+                                Logger("New title is bigger than old, so updating")
+                                Logger("Old: " + google_results[idx]["title"])
+                                Logger("New: " + url_list[0]["title"])
+                                google_results[idx]["title"] = url_list[0]["title"]
+                            continue
 
                         if len(url_list) == 1:
                             if url_list[0]["type"] == "track":
@@ -283,10 +306,10 @@ class SpotQuery:
             return None
 
 
-    def query_from_spotify (self, url, url_type):
+    def query_from_spotify (self, url, url_type, google_results):
 
         if url_type == "track":
-            return self.query_by_track_from_spotify(url)
+            return self.query_by_track_from_spotify(url, google_results)
         elif url_type == "ablum":
             return self.query_by_album_from_spotify(url)
         else:
@@ -308,7 +331,7 @@ class SpotQuery:
         for link in gres:
             if link["type"] == "track":
                 print(link["url"])
-                sres = self.query_from_spotify(link["url"], link["type"])
+                sres = self.query_from_spotify(link["url"], link["type"], gres)
                 break
 
         if sres is not None:
@@ -1083,12 +1106,12 @@ def attach_lrc ():
 
 parse_config()
 
-sq = SpotQuery("glue by daulton hopkins")
+sq = SpotQuery("taylor swift songs")
+
 if sq.gen_result():
     print(sq.get_title())
     print(sq.get_url())
     print(sq.get_type())
-
 
 ### if len(sys.argv) == 2 and (sys.argv[1] == "--lrc" or sys.argv[1] == "-l"):
 ###     attach_lrc()
