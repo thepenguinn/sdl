@@ -39,7 +39,6 @@ class SpotQuery:
     _headers = {"user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/5.15.3 Chrome/87.0.4280.144 Safari/537.36"}
 
 
-
     def __init__ (self, query):
         if SpotQuery._re_pat is None:
             SpotQuery._re_pat = re.compile("^(https://open\.spotify\.com/(.+)/.{22})(\?)?(.*)$")
@@ -67,7 +66,7 @@ class SpotQuery:
                 new = new + i
         query = new
 
-        return "https://www.google.com/search?q=" + query + "+site%3Aspotify.com&ei=JVlSYtHCA-6MseMPwNGeiAc&ved=0ahUKEwiR6fbF0Ij3AhVuRmwGHcCoB3EQ4dUDCA4&uact=5&oq=" + query + "+site%3Aspotify.com&gs_lcp=Cgdnd3Mtd2l6EANKBAhBGABKBAhGGABQAFi1c2C5dmgEcAF4AIAByQGIAfkikgEGMC4zMC4xmAEAoAEBwAEB&sclient=gws-wiz"
+        return "https://www.google.com/search?q=" + query + "+spotify&ei=JVlSYtHCA-6MseMPwNGeiAc&ved=0ahUKEwiR6fbF0Ij3AhVuRmwGHcCoB3EQ4dUDCA4&uact=5&oq=" + query + "+spotify&gs_lcp=Cgdnd3Mtd2l6EANKBAhBGABKBAhGGABQAFi1c2C5dmgEcAF4AIAByQGIAfkikgEGMC4zMC4xmAEAoAEBwAEB&sclient=gws-wiz"
 
     def query_spotify_links (self, query = None):
 
@@ -88,7 +87,7 @@ class SpotQuery:
 
         for h3 in soup.find_all("h3"):
             if h3.parent.has_attr("href"):
-                title = re.sub("spotify.*", "", h3.parent.text)
+                title = re.sub("[Ss]potify.*", "", h3.parent.text)
                 mat = self._re_pat.match(h3.parent["href"])
 
                 if mat is None:
