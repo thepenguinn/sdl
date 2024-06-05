@@ -93,7 +93,7 @@ class SpotQuery:
 
         for h3 in soup.find_all("h3"):
             if h3.parent.has_attr("href"):
-                title = re.sub("[Ss]potifyhttps:.*", "", h3.parent.text)
+                title = h3.text
                 mat = self._re_pat.match(h3.parent["href"])
 
                 if mat is None:
