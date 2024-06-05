@@ -70,6 +70,8 @@ class SpotQuery:
 
     def query_spotify_links (self, query = None):
 
+        Logger("query_spotify_links")
+
         if query:
             self.query = query
 
@@ -96,9 +98,9 @@ class SpotQuery:
                 groups = mat.groups()
 
                 if groups[1] == "album":
-                    res_type = "Album"
+                    res_type = "alubm"
                 elif groups[1] == "track":
-                    res_type = "Track"
+                    res_type = "track"
                 else:
                     continue
 
@@ -431,7 +433,7 @@ class SpotDownload:
             await self.client.send_message(
                 "deezload2bot", link_url
             )
-            if link_type == "Album":
+            if link_type == "alubm":
                 Logger("Attaching album download handler...")
                 self.client.add_event_handler(
                     self._album_dl_handler,
@@ -442,7 +444,7 @@ class SpotDownload:
                 self._last_album_artist = ""
                 self._last_album_dl_count = 0
                 self._clicked_button = False
-            elif link_type == "Track":
+            elif link_type == "track":
                 Logger("Attaching track download handler...")
                 self.client.add_event_handler(
                     self._track_dl_handler,
@@ -471,12 +473,12 @@ class SpotDownload:
                 Logger("Succeded downloading the file(s)")
                 self._curate_files()
             elif self._last_dl_status == "Failed":
-                if link_type == "Album":
+                if link_type == "alubm":
                     Logger("Dettaching track download handler...")
                     self.client.remove_event_handler(
                         self._track_dl_handler
                     )
-                elif link_type == "Track":
+                elif link_type == "track":
                     Logger("Dettaching album download handler...")
                     self.client.remove_event_handler(
                         self._album_dl_handler
@@ -802,9 +804,9 @@ def download():
             grps = mat.groups()
 
             if grps[1] == "album":
-                url_type = "Album"
+                url_type = "alubm"
             elif grps[1] == "track":
-                url_type = "Track"
+                url_type = "track"
             elif grps[1] == "playlist":
                 url_type = "Playlist"
             else:
@@ -867,10 +869,13 @@ def attach_lrc ():
 
 parse_config()
 
-if len(sys.argv) == 2 and (sys.argv[1] == "--lrc" or sys.argv[1] == "-l"):
-    attach_lrc()
-else:
-    download()
+sq = SpotQuery("varshamgalk shesam")
+sq.gen_result()
+
+### if len(sys.argv) == 2 and (sys.argv[1] == "--lrc" or sys.argv[1] == "-l"):
+###     attach_lrc()
+### else:
+###     download()
 
 # sdl = SpotDownload(Config_Dir + "/anon", Api_Id, Api_Hash)
 # downloaded_list = sdl.download(
