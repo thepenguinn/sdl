@@ -69,6 +69,24 @@ class SpotQuery:
 
         return "https://www.google.com/search?q=" + query + "+spotify&ei=JVlSYtHCA-6MseMPwNGeiAc&ved=0ahUKEwiR6fbF0Ij3AhVuRmwGHcCoB3EQ4dUDCA4&uact=5&oq=" + query + "+spotify&gs_lcp=Cgdnd3Mtd2l6EANKBAhBGABKBAhGGABQAFi1c2C5dmgEcAF4AIAByQGIAfkikgEGMC4zMC4xmAEAoAEBwAEB&sclient=gws-wiz"
 
+    def _refine_link (self, link):
+
+        # only works if we don't pass the headers
+        res = requests.get(link["url"])
+
+        if not res.ok:
+            Logger("Spotify query failed", "WARN")
+            return link
+
+        soup = BeautifulSoup(res.text, "html.parser")
+
+        for meta in soup.find_all("meta"):
+            if meta.has_attr("name") and meta["name"] == "twitter:title":
+                if meta.has_attr("content") and meta["content"] != "":
+                    link["title"] = meta["content"]
+                    return link
+
+
     def query_from_google (self, query):
 
         Logger("query_from_google")
@@ -108,11 +126,13 @@ class SpotQuery:
                 else:
                     continue
 
-                query_results.append({
-                    "url": groups[0],
-                    "type": res_type,
-                    "title": title
-                })
+                query_results.append(
+                    self._refine_link({
+                        "url": groups[0],
+                        "type": res_type,
+                        "title": title
+                    })
+                )
 
         if len(query_results) > 0:
             return query_results
@@ -1063,7 +1083,7 @@ def attach_lrc ():
 
 parse_config()
 
-sq = SpotQuery("taylor swift new songs")
+sq = SpotQuery("glue by daulton hopkins")
 if sq.gen_result():
     print(sq.get_title())
     print(sq.get_url())
