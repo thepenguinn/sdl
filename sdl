@@ -451,7 +451,7 @@ class SpotDownload:
                     events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
                 )
                 self._one_track_recieved = False
-            elif link_type == "Playlist":
+            elif link_type == "playlist":
                 Logger("Attaching playlist download handler...")
                 self.client.add_event_handler(
                     self._playlist_dl_handler,
@@ -483,7 +483,7 @@ class SpotDownload:
                     self.client.remove_event_handler(
                         self._album_dl_handler
                     )
-                elif link_type == "Playlist":
+                elif link_type == "playlist":
                     Logger("Dettaching playlist download handler...")
                     self.client.remove_event_handler(
                         self._playlist_dl_handler
@@ -808,7 +808,7 @@ def download():
             elif grps[1] == "track":
                 url_type = "track"
             elif grps[1] == "playlist":
-                url_type = "Playlist"
+                url_type = "playlist"
             else:
                 Logger("Currently only albums and tracks can be downloaded, exiting...")
                 Logger("Clipboard contents: \"" + clip + "\"")
@@ -879,7 +879,7 @@ sq.gen_result()
 
 # sdl = SpotDownload(Config_Dir + "/anon", Api_Id, Api_Hash)
 # downloaded_list = sdl.download(
-#     [("https://open.spotify.com/playlist/2oyDrQfkkSMdyXPXKKHm1t", "Playlist")]
+#     [("https://open.spotify.com/playlist/2oyDrQfkkSMdyXPXKKHm1t", "playlist")]
 # )
 
 # https://open.spotify.com/track/2Fxmhks0bxGSBdJ92vM42m
