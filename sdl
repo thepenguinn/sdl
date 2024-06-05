@@ -5,6 +5,7 @@ from telethon import TelegramClient, events, tl
 from pyfzf.pyfzf import FzfPrompt
 from mutagen.id3 import ID3, USLT, TPE1
 from bs4 import BeautifulSoup
+from pprint import pprint
 
 import configparser
 import subprocess
@@ -68,14 +69,14 @@ class SpotQuery:
 
         return "https://www.google.com/search?q=" + query + "+spotify&ei=JVlSYtHCA-6MseMPwNGeiAc&ved=0ahUKEwiR6fbF0Ij3AhVuRmwGHcCoB3EQ4dUDCA4&uact=5&oq=" + query + "+spotify&gs_lcp=Cgdnd3Mtd2l6EANKBAhBGABKBAhGGABQAFi1c2C5dmgEcAF4AIAByQGIAfkikgEGMC4zMC4xmAEAoAEBwAEB&sclient=gws-wiz"
 
-    def query_spotify_links (self, query = None):
+    def query_from_google (self, query):
 
-        Logger("query_spotify_links")
+        Logger("query_from_google")
 
-        if query:
-            self.query = query
+        if query is None:
+            None
 
-        self.query_results = []
+        query_results = []
 
         url = self._create_url(query)
 
@@ -83,13 +84,16 @@ class SpotQuery:
 
         if not res.ok:
             Logger("Google query failed", "WARN")
-            return
+            return None
+
+        with open("google.html", "w") as f:
+            f.write(res.text)
 
         soup = BeautifulSoup(res.text, "html.parser")
 
         for h3 in soup.find_all("h3"):
             if h3.parent.has_attr("href"):
-                title = re.sub("[Ss]potify.*", "", h3.parent.text)
+                title = re.sub("[Ss]potifyhttps:.*", "", h3.parent.text)
                 mat = self._re_pat.match(h3.parent["href"])
 
                 if mat is None:
@@ -98,30 +102,216 @@ class SpotQuery:
                 groups = mat.groups()
 
                 if groups[1] == "album":
-                    res_type = "alubm"
+                    res_type = "album"
                 elif groups[1] == "track":
                     res_type = "track"
                 else:
                     continue
 
-                self.query_results.append({
+                query_results.append({
                     "url": groups[0],
                     "type": res_type,
                     "title": title
                 })
 
-        return self.query_results
+        if len(query_results) > 0:
+            return query_results
+        else:
+            return None
 
-    def prompt_user (self):
+    def query_by_album_from_spotify (self, album_url):
 
-        if not self.query_results:
-            self.query_spotify_links(self.query)
+        # queries the songs of the album, but not sure whether
+        # this will return all of the tracks if the album has a
+        # track count larger the 30 songs. This will be usefull
+        # to get the albums having a single track.
+
+        query_results = []
+
+        # only works if we don't pass the headers
+        res = requests.get(album_url)
+
+        if not res.ok:
+            Logger("Spotify query failed", "WARN")
+            return None
+
+        soup = BeautifulSoup(res.text, "html.parser")
+
+        for div in soup.find_all("div"):
+            if div.has_attr("aria-label"):
+                # TODO: make sure this url is actually a track url
+                query_results.append({
+                    "title": div["aria-label"],
+                    "url": re.sub(
+                        "^.*track:", "https://open.spotify.com/track/", div["aria-labelledby"]
+                    ),
+                    "type": "track"
+                })
+
+        if len(query_results) > 0:
+            return query_results
+        else:
+            Logger("Got no tracks", "WARN")
+            return None
+
+    def query_by_track_from_spotify (self, track_url):
+
+        # queries the track from spotify, this hopefully returns
+        # the album and the related tracks.
+
+        query_results = []
+
+        # only works if we don't pass the headers
+        res = requests.get(track_url)
+
+        if not res.ok:
+            Logger("Spotify query failed", "WARN")
+            return None
+
+        soup = BeautifulSoup(res.text, "html.parser")
+
+        for div in soup.find_all("div"):
+            if div.text[0:6] == "Single":
+                parent = div.find_parent()
+                if parent.has_attr("href"):
+                    Logger("Got a Song")
+
+                    title = None
+                    for child in parent.children:
+                        if child.has_attr("dir"):
+                            title = child.text
+                            break
+                    if title is None:
+                        Logger("Haven't got a title", "WARN")
+
+                    url = "https://open.spotify.com" + parent["href"]
+                    url_type = None
+
+                    if parent["href"][0:6] == "/album":
+                        Logger("The song has an album url, querying for the track url")
+                        url_list = self.query_by_album_from_spotify(url)
+
+                        if url_list is None:
+                            Logger("query_by_album_from_spotify() returned nothing", "WARN")
+
+                        if len(url_list) == 1:
+                            if url_list[0]["type"] == "track":
+                                Logger("Got the track url")
+                                url = url_list[0]["url"]
+                                url_type = "track"
+                            else:
+                                Logger("Haven't got a track url, instead got a " + url_list[0]["url"], "WARN")
+                        elif len(url_list) > 1:
+                            Logger("query_by_album_from_spotify() returned more than one links, merging it with the results")
+                            query_results = query_results + url_list
+                            continue
+
+                    elif parent["href"][0:6] == "/track":
+                        Logger("The song has an track url")
+                        url_type = "track"
+                    else:
+                        Logger("The song neither has a track url or an album url", "WARN")
+
+                    if url is not None and url_type is not None and title is not None:
+                        query_results.append({
+                            "title": title,
+                            "url": url,
+                            "type": url_type
+                        })
+                        print("")
+                    else:
+                        Logger("One of url, url_type, and title was None", "WARN")
+
+
+            elif div.text[0:5] == "Album":
+
+                parent = div.find_parent()
+
+                if parent.has_attr("href"):
+                    Logger("Got an Ablum")
+
+                    title = None
+                    for child in parent.children:
+                        if child.has_attr("dir"):
+                            title = child.text
+                            break
+                    if title is None:
+                        Logger("Haven't got a title", "WARN")
+
+                    if parent["href"][0:6] == "/album":
+                        url_type = "album"
+                    else:
+                        Logger("url is not a album url", "WARN")
+                        url_type = None
+
+                    url = "https://open.spotify.com" + parent["href"]
+
+                    if url is not None and url_type is not None and title is not None:
+                        query_results.append({
+                            "title": title,
+                            "url": url,
+                            "type": url_type
+                        })
+                        print("")
+                    else:
+                        Logger("One of url, url_type, and title was None", "WARN")
+
+        if len(query_results) > 0:
+            return query_results
+        else:
+            Logger("Got no links", "WARN")
+            return None
+
+
+    def query_from_spotify (self, url, url_type):
+
+        if url_type == "track":
+            return self.query_by_track_from_spotify(url)
+        elif url_type == "ablum":
+            return self.query_by_album_from_spotify(url)
+        else:
+            Logger("Currently only tracks and albums can be queried from spotify", "WARN")
+            return None
+
+    def query_links (self, query):
+
+        if query is None:
+            return None
+
+        gres = self.query_from_google(query)
+
+        if gres is None:
+            return None
+
+        sres = None
+
+        for link in gres:
+            if link["type"] == "track":
+                print(link["url"])
+                sres = self.query_from_spotify(link["url"], link["type"])
+                break
+
+        if sres is not None:
+            gres = gres + sres
+
+        return gres
+
+    def prompt_user (self, query_list):
 
         fzf_list = []
         idx = 0
 
-        for res in self.query_results:
-            fzf_list.append(str(idx) + " " + res["type"] + ": " + res["title"])
+
+        for res in query_list:
+            if res["type"] == "album":
+                url_type = "Album"
+            elif res["type"] == "track":
+                url_type = "Track"
+            elif res["type"] == "playlist":
+                url_type = "Playlist"
+            else:
+                url_type = "Umm"
+            fzf_list.append(str(idx) + " " + url_type + ": " + res["title"])
             idx = idx + 1
 
         sel = self._fzf.prompt(fzf_list, "--with-nth 2..")
@@ -131,16 +321,20 @@ class SpotQuery:
 
         sel_idx = self._get_index(sel[0])
 
-        self.selected_query_result = self.query_results[sel_idx]
+        return query_list[sel_idx]
 
-        return self.selected_query_result
 
     def gen_result (self):
 
-        if not self.query_results:
-            self.query_spotify_links(self.query)
+        if self.query_results is None:
+            self.query_results = self.query_links(self.query)
+            if self.query_results is None:
+                Logger("No query results were generated from google", "WARN")
+                return None
 
-        return self.prompt_user()
+        self.selected_query_result = self.prompt_user(self.query_results)
+
+        return self.selected_query_result
 
     def get_url (self, result = None):
         if result is None:
@@ -433,7 +627,7 @@ class SpotDownload:
             await self.client.send_message(
                 "deezload2bot", link_url
             )
-            if link_type == "alubm":
+            if link_type == "album":
                 Logger("Attaching album download handler...")
                 self.client.add_event_handler(
                     self._album_dl_handler,
@@ -473,7 +667,7 @@ class SpotDownload:
                 Logger("Succeded downloading the file(s)")
                 self._curate_files()
             elif self._last_dl_status == "Failed":
-                if link_type == "alubm":
+                if link_type == "album":
                     Logger("Dettaching track download handler...")
                     self.client.remove_event_handler(
                         self._track_dl_handler
@@ -804,7 +998,7 @@ def download():
             grps = mat.groups()
 
             if grps[1] == "album":
-                url_type = "alubm"
+                url_type = "album"
             elif grps[1] == "track":
                 url_type = "track"
             elif grps[1] == "playlist":
@@ -869,8 +1063,12 @@ def attach_lrc ():
 
 parse_config()
 
-sq = SpotQuery("varshamgalk shesam")
-sq.gen_result()
+sq = SpotQuery("taylor swift new songs")
+if sq.gen_result():
+    print(sq.get_title())
+    print(sq.get_url())
+    print(sq.get_type())
+
 
 ### if len(sys.argv) == 2 and (sys.argv[1] == "--lrc" or sys.argv[1] == "-l"):
 ###     attach_lrc()
