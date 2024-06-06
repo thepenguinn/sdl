@@ -12,6 +12,7 @@ import subprocess
 import requests
 import asyncio
 import urllib
+import socket
 import json
 import time
 import sys
@@ -399,8 +400,9 @@ class SpotDownload:
     client = None
 
     def __init__ (self, session, api_id, api_hash):
-        if SpotDownload.client == None:
-            SpotDownload.client = TelegramClient(session, api_id, api_hash)
+        ### if SpotDownload.client == None:
+        ###     SpotDownload.client = TelegramClient(session, api_id, api_hash)
+        # Everything that related with downloading files
         self._last_dl_status = None
         self._last_album_track_count = 0
         self._last_album_title = ""
@@ -412,6 +414,13 @@ class SpotDownload:
         self._clicked_button = False
         self._last_dl_files = None
         self._last_playlist_dl_count = 0
+
+        # Everything that relate to daemon
+        self._port = 42045
+        self._backlog = 5
+        self._is_connected = False
+        self._dlog_file_path = "daemon.log"
+        self._dlog_file_fd = None
 
     def _set_last_album_info(self, msg_text):
 
@@ -736,6 +745,95 @@ class SpotDownload:
         self.client.start()
         self.client.loop.run_until_complete(self._download(link_list))
         return self._last_dl_files
+
+    def _dlog (self, msg, level = "LOG"):
+        self._dlog_file_fd.write(msg + "\n")
+        self._dlog_file_fd.flush()
+        return
+
+    def _launch (self):
+
+        pid = os.fork()
+
+        if pid == 0: # child
+
+            os.setsid()
+            # closing stdin, stdout, and stderr
+            for i in [0, 1, 2]:
+                try:
+                    os.close(i)
+                except:
+                    pass
+
+            pid = os.fork()
+
+            if pid > 0: # parent, just exit
+                exit()
+            else: # grand child, do the daemon suff
+                self._daemon()
+
+        # TODO: make sure the daemon started succesfully
+        return True
+
+    def _d_server_init(self, port, backlog):
+        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.bind((socket.gethostname(), port))
+        server.listen(backlog)
+
+        return server
+
+    def _daemon (self):
+
+        if self._dlog_file_fd is None:
+            self._dlog_file_fd = open(self._dlog_file_path, "w")
+            self._dlog_file_fd.write("Aloha!\n")
+
+        server = self._d_server_init(self._port, self._backlog)
+        self._dlog("Started the server")
+
+        self._dlog("Now accepting")
+        client, addr = server.accept()
+        self._dlog("Got a client")
+
+        self._dlog("Sending hai")
+        client.send("hai".encode())
+        self._dlog("Now existing")
+
+        return
+
+    def _connect (self):
+        pass
+        return
+
+    def _is_running (self):
+        pass
+        return
+
+    def _is_connected (self):
+        pass
+        return
+
+    def restart (self):
+        pass
+        return
+
+    # Call this everytime the client starts.
+    # And this will take care of starting the daemon
+    # (if it's not running) and attaching to the daemon
+    def connect (self):
+
+        if self._is_connected:
+            return True
+
+        print(self._launch())
+
+        ### if not self._is_running():
+        ###     if not self._launch():
+        ###         return False
+
+        ### return self._connect()
+
 
 class SpotLrc():
 
@@ -1106,12 +1204,10 @@ def attach_lrc ():
 
 parse_config()
 
-sq = SpotQuery("taylor swift songs")
+# sq = SpotQuery("taylor swift songs")
+sdl = SpotDownload(Config_Dir + "/anon", Api_Id, Api_Hash)
 
-if sq.gen_result():
-    print(sq.get_title())
-    print(sq.get_url())
-    print(sq.get_type())
+sdl.connect()
 
 ### if len(sys.argv) == 2 and (sys.argv[1] == "--lrc" or sys.argv[1] == "-l"):
 ###     attach_lrc()
