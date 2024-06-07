@@ -810,7 +810,7 @@ class SpotDownload:
         # TODO: make sure the daemon started succesfully
         return True
 
-    def _d_server_init(self, port, backlog):
+    def _daemon_server_init(self, port, backlog):
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind((socket.gethostname(), port))
@@ -831,7 +831,7 @@ class SpotDownload:
             self._daemon_logger_file_fd.write("Aloha!\n")
 
         self._daemon_logger("Started the server")
-        server = self._d_server_init(self._port, self._backlog)
+        server = self._daemon_server_init(self._port, self._backlog)
 
         self._status_lock = Lock()
         self._data_lock = Lock()
