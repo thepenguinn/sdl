@@ -4,6 +4,7 @@ from telethon import TelegramClient, events, tl
 
 from pyfzf.pyfzf import FzfPrompt
 from mutagen.id3 import ID3, USLT, TPE1
+from threading import Thread, Lock
 from bs4 import BeautifulSoup
 from pprint import pprint
 from enum import Enum
@@ -438,6 +439,7 @@ class SpotDownload:
         # Status Logger
         self._status_logger_file_fd = open("status.log", "w")
         self._status_conn_broke = False
+        self._status_pending = []
 
         # Everything that relate to daemon
         self._port = 42045
@@ -495,16 +497,53 @@ class SpotDownload:
 
         print(percent + bar_str + speed_kb + " | " + self._to_mb_str_bytes(current) + " / " + self._to_mb_str_bytes(total), end = "\r")
 
-    def _status_logger (self, msg, level = "LOG"):
+    def _status_logger (self, message, level = None):
+
+        if level is None:
+            level = self.Status.LOG
+
+        cur_time = time.monotonic()
+
+        # if level == Status.LOG:
+        # elif level == self.Status.WARN:
+        # elif level == Status.SEND:
+        # elif level == Status.PROGRESS:
+        # elif level == Status.FAILED:
+        # elif level == Status.SUCCESS:
+        # else:
+
+        status = {
+            "level": level.value,
+            "time": cur_time,
+            "message": message
+        }
+
+        payload = json.dumps(status).encode()
+
+        size = len(payload)
+
+        header = bytearray([
+            size & 0xff, (size >> 8) & 0xff, (size >> 16) & 0xff, (size >> 24) & 0xff
+        ])
+
         try:
             self._status_lock.acquire()
-            self._status_socket.write(msg)
-            self._status_lock.release()
-        except:
-            pass
-        else:
+            self._status_socket.send(header + payload)
+        except Exception as e:
+            self._status_logger_file_fd.write(e.args[0])
+            self._status_logger_file_fd.flush()
+            self._data_lock.acquire()
+            self._status_pending.append(status)
+        finally:
+            if self._status_lock.locked():
+                self._status_lock.release()
+            if self._data_lock.locked():
+                self._data_lock.release()
 
-        self._status_logger_file_fd.write(msg + "\n")
+        self._status_logger_file_fd.write(
+            level.name + ": " + str(cur_time) + ": " + str(message) + "\n"
+        )
+        self._status_logger_file_fd.flush()
 
     async def _download_audio (self, msg):
 
@@ -517,7 +556,7 @@ class SpotDownload:
         file_name = Music_Dir + "/" + file_name
 
         if os.path.isfile(file_name):
-            self._status_logger("File exists, skipping the download", "WARN")
+            self._status_logger("File exists, skipping the download", self.Status.WARN)
             return
 
         self._last_dl_files.append(file_name)
@@ -558,7 +597,7 @@ class SpotDownload:
         if download_size == msg.document.size:
             os.rename(tmp_file_name, file_name)
         else:
-            self._status_logger("Size of the downloaded file doesn't match with the size from Telegram,\nprobably corrupted", "WARN")
+            self._status_logger("Size of the downloaded file doesn't match with the size from Telegram,\nprobably corrupted", self.Status.WARN)
 
     async def _download_audio_files (self):
 
@@ -599,7 +638,7 @@ class SpotDownload:
         elif event.buttons:
 
             if self._clicked_button:
-                self._status_logger("Got another message with buttons", "WARN")
+                self._status_logger("Got another message with buttons", self.Status.WARN)
                 return
 
             # This must be the first msg if the url is a proper one
@@ -620,7 +659,7 @@ class SpotDownload:
                     self._clicked_button = True
                     await event.buttons[0][0].click()
                 else:
-                    self._status_logger("Track Count is not 1, somethings wrong", "WARN")
+                    self._status_logger("Track Count is not 1, somethings wrong", self.Status.WARN)
 
         elif event.photo:
             if not self._clicked_button:
@@ -637,9 +676,9 @@ class SpotDownload:
         await event.mark_read()
         if event.message.message == "Track not found." or event.message.message == "Invalid link ;)":
             if event.message.message == "Track not found.":
-                self._status_logger("Track no found. Disconnecting...", "WARN")
+                self._status_logger("Track no found. Disconnecting...", self.Status.WARN)
             else:
-                self._status_logger("Link was Invalid. Disconnecting...", "WARN")
+                self._status_logger("Link was Invalid. Disconnecting...", self.Status.WARN)
             self._last_dl_status = "Failed"
             await self.client.disconnect()
 
@@ -671,11 +710,11 @@ class SpotDownload:
 
         if event.buttons:
             if self._clicked_button:
-                self._status_logger("Got another message with buttons.", "WARN")
+                self._status_logger("Got another message with buttons.", self.Status.WARN)
                 if event.message.message == "Downloading…":
                     self._status_logger("Its the Downloading message")
                 else:
-                    self._status_logger("Its not the Downloading message", "WARN")
+                    self._status_logger("Its not the Downloading message", self.Status.WARN)
                 return
 
             if event.buttons[0][0].text == "GET ALL ⬇️":
@@ -695,7 +734,7 @@ class SpotDownload:
             # print(self._last_playlist_dl_count)
             await self._download_audio_files()
         else:
-            self._status_logger("Recieved some other message", "WARN")
+            self._status_logger("Recieved some other message", self.Status.WARN)
             print(event.message.message)
 
     async def _download (self, link_list):
@@ -769,10 +808,10 @@ class SpotDownload:
                     self.client.remove_event_handler(
                         self._playlist_dl_handler
                     )
-                self._status_logger("Failed downloading the file(s)", "WARN")
+                self._status_logger("Failed downloading the file(s)", self.Status.WARN)
             else:
-                self._status_logger("_last_dl_status should be either Success or Failed", "WARN")
-                self._status_logger("Current value: " + self._last_dl_status, "WARN")
+                self._status_logger("_last_dl_status should be either Success or Failed", self.Status.WARN)
+                self._status_logger("Current value: " + self._last_dl_status, self.Status.WARN)
 
 
     def download (self, link_list):
@@ -785,6 +824,18 @@ class SpotDownload:
         self._daemon_logger_file_fd.write(msg + "\n")
         self._daemon_logger_file_fd.flush()
         return
+
+    def _est_daemon_connection (self):
+        # this will block
+        try:
+            connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            connection.connect((socket.gethostname(), self._port))
+        except:
+            Logger("Can't connect to the daemon", "WARN")
+            return None
+        else:
+            return connection
+
 
     def _launch (self):
 
@@ -808,7 +859,69 @@ class SpotDownload:
                 self._daemon()
 
         # TODO: make sure the daemon started succesfully
+        Logger("sleeping for 10 ms, waiting for the daemon to start")
+        time.sleep(0.01)
+
+        # OK connection
+        okconn = self._est_daemon_connection()
+
+        if okconn is None:
+            return False
+        else:
+            okmsg = okconn.recv(2)
+            if okmsg.decode() == "OK":
+                Logger("Got the OK, now disconnecting")
+                okconn.shutdown(socket.SHUT_RDWR)
+                okconn.close()
+            else:
+                Logger("Got something else: \"" + okmsg.decode() + "\"", "WARN")
+                return False
+
         return True
+
+    def _download_thread_handler (self):
+
+        time.sleep(1)
+        self._status_logger("lol")
+        time.sleep(1)
+        self._status_logger("hai again")
+        time.sleep(2)
+        self._status_logger("hai again after another 2 seconds")
+        time.sleep(3)
+        self._status_logger("That was too long, almost 3 seconds")
+
+        self._status_logger("Now exiting")
+
+        return
+
+    def _cal_payload_size (self, four_bytes):
+
+        return four_bytes[0] | four_bytes[1] << 8 | four_bytes[2] << 16 | four_bytes[3] << 24
+
+    def _command_thread_handlier (self, command_socket):
+
+        while True:
+            # TESTING: this should block here till daemon got disconnected
+            size = command_socket.recv(4)
+            if size == b'':
+                self._daemon_logger("It seems like the client got disconnected", "WARN")
+                break
+
+            size = self._cal_payload_size(size)
+            self._daemon_logger( "size of the payload: " + str(size), "WARN")
+            payload = command_socket.recv(size)
+            if payload == b'':
+                self._daemon_logger(
+                    "It seems like the client got disconnected, before sending the payload",
+                    "WARN"
+                )
+                break
+
+            command = json.loads(payload.decode())
+
+        self._daemon_logger("Leaving the _command_thread_handlier loop", "WARN")
+
+        return
 
     def _daemon_server_init(self, port, backlog):
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -818,13 +931,9 @@ class SpotDownload:
 
         return server
 
-    def _download_thread_handler (self, status_lock, data_lock):
-
-        return
-
     def _daemon (self):
 
-        stop_daemon = False
+        self._stop_daemon = False
 
         if self._daemon_logger_file_fd is None:
             self._daemon_logger_file_fd = open(self._daemon_logger_file_path, "w")
@@ -832,14 +941,14 @@ class SpotDownload:
 
         self._daemon_logger("Started the server")
         server = self._daemon_server_init(self._port, self._backlog)
+        self._daemon_logger("Succesfully initialized the server")
 
         self._status_lock = Lock()
         self._data_lock = Lock()
 
-        while True:
+        download_thread = None
 
-            status_lock.release()
-            data_lock.release()
+        while True:
 
             # OK connection
             self._daemon_logger("Now accepting for OK msg")
@@ -862,9 +971,9 @@ class SpotDownload:
             # this socket will be used to send the status, the client should
             # only be recving from this socket, DO NOT SEND anything.
 
-            status_lock.acquire()
+            self._status_lock.acquire()
             self._status_socket, addr = server.accept()
-            status_lock.release()
+            self._status_lock.release()
             self._daemon_logger("Client got connected")
 
             # we might not need a seperate thread for status.
@@ -879,19 +988,27 @@ class SpotDownload:
             self._daemon_logger("Client got connected")
 
             # status_socket should be a shared resource
-            download_thread = Thread(target = self._download_thread_handler)
+            if download_thread is None:
+                # this thread should never raise any exceptions that
+                # means this thread should only stop when the daemon
+                # is exiting
+                download_thread = Thread(target = self._download_thread_handler)
 
-            self._daemon_logger("Starting the download thread")
-            download_thread.start()
+                self._daemon_logger("Starting the download thread")
+                download_thread.start()
 
             # main thread will handle the command connection
             self._daemon_logger("Starting the command thread")
-            self._command_thread_handlier()
+            self._command_thread_handlier(command_socket)
 
-            if stop_daemon:
+            if self._stop_daemon:
                 break
 
-        Logger("Exiting...")
+            if not download_thread.is_alive():
+                self._daemon_logger("download_thread is not alive, probably crashed", "WARN")
+                break
+
+        self._daemon_logger("Exiting...", "WARN")
 
         return
 
@@ -919,7 +1036,49 @@ class SpotDownload:
         if self._is_connected:
             return True
 
-        print(self._launch())
+        if self._launch():
+            Logger("Launched the daemon, daemon is waiting for connections")
+        else:
+            Logger("Failed to launch the daemon, returning", "WARN")
+            return
+
+        Logger("Establishing the status connection")
+
+        stconn = self._est_daemon_connection()
+        if stconn is None:
+            Logger("Failed to establish the status connection", "WARN")
+
+        # TESTING: we won't be doing anything with the cmconn at the moment
+        cmconn  = self._est_daemon_connection()
+        if cmconn is None:
+            Logger("Failed to establish the command connection", "WARN")
+
+        while True:
+
+            Logger("Reciving a new status")
+            size = stconn.recv(4)
+            if size == b'':
+                Logger("Recieved a null byte probably the daemon got disconnected", "WARN")
+                break
+
+            Logger("Got a size")
+
+            size = self._cal_payload_size(size)
+
+            Logger("Recived one, size of the payload: " + str(size))
+            payload = stconn.recv(size)
+
+            if payload == b'':
+                Logger(
+                    " Recived a null byte probably the daemon got disconnected before sending the payload",
+                    "WARN"
+                )
+                break
+
+            status = json.loads(payload.decode())
+
+            print(status)
+
 
         ### if not self._is_running():
         ###     if not self._launch():
