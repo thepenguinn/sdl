@@ -1044,19 +1044,19 @@ class SpotDownload:
 
         Logger("Establishing the status connection")
 
-        stconn = self._est_daemon_connection()
-        if stconn is None:
+        self.status_socket = self._est_daemon_connection()
+        if self.status_socket is None:
             Logger("Failed to establish the status connection", "WARN")
 
-        # TESTING: we won't be doing anything with the cmconn at the moment
-        cmconn  = self._est_daemon_connection()
-        if cmconn is None:
+        # TESTING: we won't be doing anything with the command_socket at the moment
+        self.command_socket = self._est_daemon_connection()
+        if command_socket is None:
             Logger("Failed to establish the command connection", "WARN")
 
         while True:
 
             Logger("Reciving a new status")
-            size = stconn.recv(4)
+            size = status_socket.recv(4)
             if size == b'':
                 Logger("Recieved a null byte probably the daemon got disconnected", "WARN")
                 break
@@ -1066,7 +1066,7 @@ class SpotDownload:
             size = self._cal_payload_size(size)
 
             Logger("Recived one, size of the payload: " + str(size))
-            payload = stconn.recv(size)
+            payload = status_socket.recv(size)
 
             if payload == b'':
                 Logger(
