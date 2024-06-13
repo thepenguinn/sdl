@@ -424,17 +424,17 @@ class SpotDownload:
         ### if SpotDownload.client == None:
         ###     SpotDownload.client = TelegramClient(session, api_id, api_hash)
         # Everything that related with downloading files
-        self._last_dl_status = None
+        self._last_download_status = None
         self._last_album_track_count = 0
         self._last_album_title = ""
         self._last_album_artist = ""
-        self._last_album_dl_count = 0
+        self._last_album_download_count = 0
         self._one_photo_recieved = False
         self._one_track_recieved = False
         self._download_list = None
         self._clicked_button = False
-        self._last_dl_files = None
-        self._last_playlist_dl_count = 0
+        self._last_download_files = None
+        self._last_playlist_download_count = 0
 
         # Status Logger
         self._status_logger_file_fd = open("status.log", "w")
@@ -477,19 +477,19 @@ class SpotDownload:
 
     def _curate_files (self):
 
-        if len(self._last_dl_files) < 1:
+        if len(self._last_download_files) < 1:
             Logger("It seems like no files have been downloaded.", "WARN")
             return
 
         termuxcmd = ["termux-media-scan"]
 
-        subprocess.run(termuxcmd + self._last_dl_files)
+        subprocess.run(termuxcmd + self._last_download_files)
 
     def _to_mb_str_bytes(self, size):
         return "%05.2f MB"%((size / 1024) / 1024)
 
     def _prog_callback(self, current, total):
-        time_taken = time.time() - self._dl_start_time
+        time_taken = time.time() - self._download_start_time
         speed_kb = "%d KB/s" % (int((current / time_taken) / 1024))
         percent = "% 6.2f%%" % (current / total * 100)
         bars = int((current / total * 100) / 5)
@@ -559,7 +559,7 @@ class SpotDownload:
             self._status_logger("File exists, skipping the download", self.Status.WARN)
             return
 
-        self._last_dl_files.append(file_name)
+        self._last_download_files.append(file_name)
 
         tmp_file_fd = None
         download_size = 0
@@ -584,7 +584,7 @@ class SpotDownload:
 
         print("File: " + file_name + " | Size: " + self._to_mb_str_bytes(msg.document.size))
 
-        self._dl_start_time = time.time()
+        self._download_start_time = time.time()
         async for chunk in self.client.iter_download(
             msg.document, offset = download_size, request_size = REQUEST_SIZE):
             download_size += len(chunk)
@@ -608,11 +608,11 @@ class SpotDownload:
 
         await self.client.disconnect()
 
-    async def _album_dl_handler (self, event):
+    async def _album_download_handler (self, event):
         await event.mark_read()
         if event.message.message == "Invalid link ;)":
             self._status_logger("Link was Invalid. Disconnecting...")
-            self._last_dl_status = "Failed"
+            self._last_download_status = "Failed"
             await self.client.disconnect()
 
         if event.audio:
@@ -622,13 +622,13 @@ class SpotDownload:
 
             self._download_list.append(event)
             # await self._download_audio(event)
-            self._last_album_dl_count += 1
-            if self._last_album_track_count == self._last_album_dl_count and self._one_photo_recieved:
+            self._last_album_download_count += 1
+            if self._last_album_track_count == self._last_album_download_count and self._one_photo_recieved:
                 self._status_logger("Downloaded all the tracks. Disconnecting...")
-                self._last_dl_status = "Success"
+                self._last_download_status = "Success"
                 self._status_logger("Dettaching album download handler...")
                 self.client.remove_event_handler(
-                    self._album_dl_handler
+                    self._album_download_handler
                 )
                 await self._download_audio_files()
             return
@@ -672,14 +672,14 @@ class SpotDownload:
             self._status_logger("Recived one message with a photo")
             return
 
-    async def _track_dl_handler (self, event):
+    async def _track_download_handler (self, event):
         await event.mark_read()
         if event.message.message == "Track not found." or event.message.message == "Invalid link ;)":
             if event.message.message == "Track not found.":
                 self._status_logger("Track no found. Disconnecting...", self.Status.WARN)
             else:
                 self._status_logger("Link was Invalid. Disconnecting...", self.Status.WARN)
-            self._last_dl_status = "Failed"
+            self._last_download_status = "Failed"
             await self.client.disconnect()
 
         if event.audio:
@@ -694,18 +694,18 @@ class SpotDownload:
 
         if self._one_photo_recieved and self._one_track_recieved:
             self._status_logger("Recieved the track and the photo. Disconnecting...")
-            self._last_dl_status = "Success"
+            self._last_download_status = "Success"
             self._status_logger("Dettaching track download handler...")
             self.client.remove_event_handler(
-                self._track_dl_handler
+                self._track_download_handler
             )
             await self._download_audio_files()
 
-    async def _playlist_dl_handler (self, event):
+    async def _playlist_download_handler (self, event):
         await event.mark_read()
         if event.message.message == "Invalid link ;)":
             self._status_logger("Link was Invalid. Disconnecting...")
-            self._last_dl_status = "Failed"
+            self._last_download_status = "Failed"
             await self.client.disconnect()
 
         if event.buttons:
@@ -723,15 +723,15 @@ class SpotDownload:
                 await event.buttons[0][0].click()
         elif event.audio:
             self._download_list.append(event)
-            self._last_playlist_dl_count += 1
+            self._last_playlist_download_count += 1
         elif event.message.message == "Finished.":
             self._status_logger("Downloaded all the tracks. Disconnecting...")
-            self._last_dl_status = "Success"
+            self._last_download_status = "Success"
             self._status_logger("Dettaching playlist download handler...")
             self.client.remove_event_handler(
-                self._playlist_dl_handler
+                self._playlist_download_handler
             )
-            # print(self._last_playlist_dl_count)
+            # print(self._last_playlist_download_count)
             await self._download_audio_files()
         else:
             self._status_logger("Recieved some other message", self.Status.WARN)
@@ -756,69 +756,69 @@ class SpotDownload:
             if link_type == "album":
                 self._status_logger("Attaching album download handler...")
                 self.client.add_event_handler(
-                    self._album_dl_handler,
+                    self._album_download_handler,
                     events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
                 )
                 self._last_album_track_count = 0
                 self._last_album_title = ""
                 self._last_album_artist = ""
-                self._last_album_dl_count = 0
+                self._last_album_download_count = 0
                 self._clicked_button = False
             elif link_type == "track":
                 self._status_logger("Attaching track download handler...")
                 self.client.add_event_handler(
-                    self._track_dl_handler,
+                    self._track_download_handler,
                     events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
                 )
                 self._one_track_recieved = False
             elif link_type == "playlist":
                 self._status_logger("Attaching playlist download handler...")
                 self.client.add_event_handler(
-                    self._playlist_dl_handler,
+                    self._playlist_download_handler,
                     events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
                 )
                 self._clicked_button = False
-                self._last_playlist_dl_count = 0
+                self._last_playlist_download_count = 0
 
 
-            self._last_dl_status = None
-            self._last_dl_files = []
+            self._last_download_status = None
+            self._last_download_files = []
             self._one_photo_recieved = False
             self._download_list = []
 
             self._status_logger("Waiting for the reply from deezload2bot...")
             await self.client.run_until_disconnected()
 
-            if self._last_dl_status == "Success":
+            if self._last_download_status == "Success":
                 self._status_logger("Succeded downloading the file(s)")
                 self._curate_files()
-            elif self._last_dl_status == "Failed":
+            elif self._last_download_status == "Failed":
                 if link_type == "album":
                     self._status_logger("Dettaching track download handler...")
                     self.client.remove_event_handler(
-                        self._track_dl_handler
+                        self._track_download_handler
                     )
                 elif link_type == "track":
                     self._status_logger("Dettaching album download handler...")
                     self.client.remove_event_handler(
-                        self._album_dl_handler
+                        self._album_download_handler
                     )
                 elif link_type == "playlist":
                     self._status_logger("Dettaching playlist download handler...")
                     self.client.remove_event_handler(
-                        self._playlist_dl_handler
+                        self._playlist_download_handler
                     )
                 self._status_logger("Failed downloading the file(s)", self.Status.WARN)
             else:
-                self._status_logger("_last_dl_status should be either Success or Failed", self.Status.WARN)
-                self._status_logger("Current value: " + self._last_dl_status, self.Status.WARN)
+                self._status_logger("_last_download_status should be either Success or Failed", self.Status.WARN)
+                self._status_logger("Current value: " + self._last_download_status, self.Status.WARN)
 
 
     def download (self, link_list):
 
         self.client.start()
         self.client.loop.run_until_complete(self._download(link_list))
-        return self._last_dl_files
+        return self._last_download_files
 
     def _daemon_logger (self, msg, level = "LOG"):
         self._daemon_logger_file_fd.write(msg + "\n")
