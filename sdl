@@ -44,12 +44,15 @@ class SpotQuery:
 
 
     def __init__ (self, query):
+
         if SpotQuery._re_pat is None:
             SpotQuery._re_pat = re.compile("^(https://open\.spotify\.com/(.+)/.{22})(\?)?(.*)$")
         if SpotQuery._fzf is None:
             SpotQuery._fzf = FzfPrompt()
         self.query = query
         self.query_results = None
+
+        return
 
     def _get_index (self, line):
         end = 0
@@ -427,6 +430,8 @@ class SpotDaemon:
         self._api_hash = api_hash
         self._port = port
         self._backlog = backlog
+
+        return
 
     def _init (self):
 
@@ -978,12 +983,15 @@ class SpotClient:
     daemon = None
 
     def __init__ (self, session, api_id, api_hash, port = 49524):
+
         if self.daemon is None:
             self.daemon = SpotDaemon(session, api_id, api_hash, port)
         self._api_id = api_id
         self._api_hash = api_hash
         self._port = port
         self._is_connected = False
+
+        return
 
     def _cal_payload_size (self, four_bytes):
 
@@ -1127,6 +1135,7 @@ class SpotLrc():
     _url_base = "https://lrclib.net/api/search?"
 
     def __init__ (self, lrc_dir):
+
         if os.path.isdir(lrc_dir):
             self.lrc_dir = lrc_dir
             try:
@@ -1144,6 +1153,8 @@ class SpotLrc():
         else:
             Logger("Directory doesn't exists.")
         pass
+
+        return
 
     def _fix_artist (self, file):
 
