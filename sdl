@@ -397,7 +397,7 @@ class SpotQuery:
             result = self.selected_query_result
         return result["title"]
 
-class SpotDownload:
+class SpotDaemon:
 
     client = None
 
@@ -420,9 +420,22 @@ class SpotDownload:
         ]
     )
 
-    def __init__ (self, session, api_id, api_hash):
-        ### if SpotDownload.client == None:
-        ###     SpotDownload.client = TelegramClient(session, api_id, api_hash)
+    def __init__ (self, session, api_id, api_hash, port, backlog = 5):
+
+        self._session = session
+        self._api_id = api_id
+        self._api_hash = api_hash
+        self._port = port
+        self._backlog = backlog
+
+    def _init (self):
+
+        # TESTING #
+        ### if self.client == None:
+        ###     self.client = TelegramClient(
+        ###         self._session, self._api_id, self._api_hash
+        ###     )
+
         # Everything that related with downloading files
         self._last_download_status = None
         self._last_album_track_count = 0
@@ -442,13 +455,12 @@ class SpotDownload:
         self._status_pending = []
 
         # Everything that relate to daemon
-        self._port = 42045
-        self._backlog = 5
         self._is_connected = False
         self._daemon_logger_file_path = "daemon.log"
         self._daemon_logger_file_fd = None
+        return
 
-    def _set_last_album_info(self, msg_text):
+    def _set_last_album_info (self, msg_text):
 
         lend = 0
         lstart = 0
@@ -530,8 +542,8 @@ class SpotDownload:
             self._status_lock.acquire()
             self._status_socket.send(header + payload)
         except Exception as e:
-            self._status_logger_file_fd.write(e.args[0])
-            self._status_logger_file_fd.flush()
+            # self._status_logger_file_fd.write(e.args[0])
+            # self._status_logger_file_fd.flush()
             self._data_lock.acquire()
             self._status_pending.append(status)
         finally:
@@ -825,60 +837,6 @@ class SpotDownload:
         self._daemon_logger_file_fd.flush()
         return
 
-    def _est_daemon_connection (self):
-        # this will block
-        try:
-            connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            connection.connect((socket.gethostname(), self._port))
-        except:
-            Logger("Can't connect to the daemon", "WARN")
-            return None
-        else:
-            return connection
-
-
-    def _launch (self):
-
-        pid = os.fork()
-
-        if pid == 0: # child
-
-            os.setsid()
-            # closing stdin, stdout, and stderr
-            for i in [0, 1, 2]:
-                try:
-                    os.close(i)
-                except:
-                    pass
-
-            pid = os.fork()
-
-            if pid > 0: # parent, just exit
-                exit()
-            else: # grand child, do the daemon suff
-                self._daemon()
-
-        # TODO: make sure the daemon started succesfully
-        Logger("sleeping for 10 ms, waiting for the daemon to start")
-        time.sleep(0.01)
-
-        # OK connection
-        okconn = self._est_daemon_connection()
-
-        if okconn is None:
-            return False
-        else:
-            okmsg = okconn.recv(2)
-            if okmsg.decode() == "OK":
-                Logger("Got the OK, now disconnecting")
-                okconn.shutdown(socket.SHUT_RDWR)
-                okconn.close()
-            else:
-                Logger("Got something else: \"" + okmsg.decode() + "\"", "WARN")
-                return False
-
-        return True
-
     def _download_thread_handler (self):
 
         time.sleep(1)
@@ -924,6 +882,7 @@ class SpotDownload:
         return
 
     def _daemon_server_init(self, port, backlog):
+        # TODO: handle exceptions
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         server.bind((socket.gethostname(), port))
@@ -931,7 +890,9 @@ class SpotDownload:
 
         return server
 
-    def _daemon (self):
+    def run (self):
+
+        self._init()
 
         self._stop_daemon = False
 
@@ -1012,6 +973,78 @@ class SpotDownload:
 
         return
 
+class SpotClient:
+
+    daemon = None
+
+    def __init__ (self, session, api_id, api_hash, port = 49524):
+        if self.daemon is None:
+            self.daemon = SpotDaemon(session, api_id, api_hash, port)
+        self._api_id = api_id
+        self._api_hash = api_hash
+        self._port = port
+        self._is_connected = False
+
+    def _cal_payload_size (self, four_bytes):
+
+        return four_bytes[0] | four_bytes[1] << 8 | four_bytes[2] << 16 | four_bytes[3] << 24
+
+    def _est_daemon_connection (self):
+        # this will block
+        try:
+            connection = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            connection.connect((socket.gethostname(), self._port))
+        except:
+            Logger("Can't connect to the daemon", "WARN")
+            return None
+        else:
+            return connection
+
+    def _check_ok_connection (self):
+        # OK connection
+        okconn = self._est_daemon_connection()
+
+        if okconn is None:
+            return False
+        else:
+            okmsg = okconn.recv(2)
+            if okmsg.decode() == "OK":
+                Logger("Got the OK, now disconnecting")
+                okconn.shutdown(socket.SHUT_RDWR)
+                okconn.close()
+            else:
+                Logger("Got something else: \"" + okmsg.decode() + "\"", "WARN")
+                return False
+
+        return True
+
+    def _launch_daemon (self):
+
+        pid = os.fork()
+
+        if pid == 0: # child
+
+            os.setsid()
+            # closing stdin, stdout, and stderr
+            for i in [0, 1, 2]:
+                try:
+                    os.close(i)
+                except:
+                    pass
+
+            pid = os.fork()
+
+            if pid > 0: # parent, just exit
+                exit()
+            else: # grand child, do the daemon suff
+                self.daemon.run()
+
+        # TODO: make sure the daemon started succesfully
+        Logger("sleeping for 10 ms, waiting for the daemon to start")
+        time.sleep(0.01)
+
+        return self._check_ok_connection()
+
     def _connect (self):
         pass
         return
@@ -1020,9 +1053,9 @@ class SpotDownload:
         pass
         return
 
-    def _is_connected (self):
-        pass
-        return
+    # def _is_connected (self):
+    #     pass
+    #     return
 
     def restart (self):
         pass
@@ -1036,7 +1069,9 @@ class SpotDownload:
         if self._is_connected:
             return True
 
-        if self._launch():
+        print("ok")
+
+        if self._launch_daemon():
             Logger("Launched the daemon, daemon is waiting for connections")
         else:
             Logger("Failed to launch the daemon, returning", "WARN")
@@ -1050,13 +1085,13 @@ class SpotDownload:
 
         # TESTING: we won't be doing anything with the command_socket at the moment
         self.command_socket = self._est_daemon_connection()
-        if command_socket is None:
+        if self.command_socket is None:
             Logger("Failed to establish the command connection", "WARN")
 
         while True:
 
             Logger("Reciving a new status")
-            size = status_socket.recv(4)
+            size = self.status_socket.recv(4)
             if size == b'':
                 Logger("Recieved a null byte probably the daemon got disconnected", "WARN")
                 break
@@ -1066,11 +1101,11 @@ class SpotDownload:
             size = self._cal_payload_size(size)
 
             Logger("Recived one, size of the payload: " + str(size))
-            payload = status_socket.recv(size)
+            payload = self.status_socket.recv(size)
 
             if payload == b'':
                 Logger(
-                    " Recived a null byte probably the daemon got disconnected before sending the payload",
+                    "Recived a null byte probably the daemon got disconnected before sending the payload",
                     "WARN"
                 )
                 break
@@ -1457,9 +1492,9 @@ def attach_lrc ():
 parse_config()
 
 # sq = SpotQuery("taylor swift songs")
-sdl = SpotDownload(Config_Dir + "/anon", Api_Id, Api_Hash)
+sdl = SpotClient(Config_Dir + "/anon", Api_Id, Api_Hash)
 
-sdl.connect()
+print(sdl.connect())
 
 ### if len(sys.argv) == 2 and (sys.argv[1] == "--lrc" or sys.argv[1] == "-l"):
 ###     attach_lrc()
