@@ -976,7 +976,7 @@ class SpotDaemon:
 
         self._daemon_logger("Exiting...", "WARN")
 
-        return
+        exit()
 
 class SpotUi:
     pass
