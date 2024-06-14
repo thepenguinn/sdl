@@ -463,6 +463,11 @@ class SpotDaemon:
         self._is_connected = False
         self._daemon_logger_file_path = "daemon.log"
         self._daemon_logger_file_fd = None
+
+        # TESTING #
+        self.link_list = []
+        self.info_list = []
+
         return
 
     def _set_last_album_info (self, msg_text):
@@ -843,6 +848,10 @@ class SpotDaemon:
         return
 
     def _download_thread_handler (self):
+        # this is where the download happens
+        # there are two parts to this
+        # the command thread (ie, the main thread)
+        # will adds urls to the url list
 
         time.sleep(1)
         self._status_logger("lol")
@@ -1004,8 +1013,13 @@ class SpotClient:
         self._port = port
         self._daemon_is_connected = False
 
+        # TESTING #
+        self.link_list = []
+        self.info_list = []
+
         return
 
+    # TODO: you need a seperate function for this, huh?
     def _cal_payload_size (self, four_bytes):
 
         return four_bytes[0] | four_bytes[1] << 8 | four_bytes[2] << 16 | four_bytes[3] << 24
@@ -1200,7 +1214,7 @@ class SpotClient:
         return
 
     # This will block, and only returns only if something happened
-    # terribly, or we are exiting.
+    # terribly, or when we are exiting.
     def run (self):
 
         if not self._daemon_is_connected:
@@ -1212,6 +1226,8 @@ class SpotClient:
 
         draw_lock = Lock()
         data_lock = Lock() # err, maybe ?
+
+
 
         return
 
