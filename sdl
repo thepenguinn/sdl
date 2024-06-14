@@ -855,6 +855,9 @@ class SpotDaemon:
 
         self._status_logger("Now exiting")
 
+        while True:
+            time.sleep(2)
+
         return
 
     def _cal_payload_size (self, four_bytes):
@@ -916,6 +919,8 @@ class SpotDaemon:
 
         while True:
 
+            self._daemon_logger("\nNew Connection\n")
+
             # OK connection
             self._daemon_logger("Now accepting for OK msg")
             client, addr = server.accept()
@@ -968,7 +973,10 @@ class SpotDaemon:
             self._command_thread_handlier(command_socket)
 
             if self._stop_daemon:
+                download_thread.join()
                 break
+            else:
+                continue
 
             if not download_thread.is_alive():
                 self._daemon_logger("download_thread is not alive, probably crashed", "WARN")
@@ -992,7 +1000,7 @@ class SpotClient:
         self._api_id = api_id
         self._api_hash = api_hash
         self._port = port
-        self._is_connected = False
+        self._daemon_is_connected = False
 
         return
 
@@ -1066,7 +1074,8 @@ class SpotClient:
 
         if process_name == "sdl":
             Logger("The daemon is running.")
-            return True
+            Logger("Proceeding for an OK connection")
+            return self._check_ok_connection()
         else:
             Logger(
                 "It's seems like it is different process\n"
@@ -1146,7 +1155,9 @@ class SpotClient:
     # (if it's not running) and attaching to the daemon
     def connect (self):
 
-        if self._is_connected: # TODO: remove this
+        # this will prevent trying to connect to the already
+        # connected daemon
+        if self._daemon_is_connected:
             return True
 
         if not self._is_daemon_running():
@@ -1168,8 +1179,35 @@ class SpotClient:
             Logger("Failed to establish the command connection", "WARN")
             return False
 
+        self._daemon_is_connected = True
+
+        # TESTING #
         self._connect_to_daemon()
-        return False
+
+        return True
+
+    def _status_thread_handlier (self):
+
+        return
+
+    def _input_thread_handlier (self):
+
+        return
+
+    # This will block, and only returns only if something happened
+    # terribly, or we are exiting.
+    def run (self):
+
+        if not self._daemon_is_connected:
+            if not self.connect():
+                return False
+
+        status_thread = None
+        input_thread = None
+
+        start
+
+        return
 
 class SpotLrc():
 
