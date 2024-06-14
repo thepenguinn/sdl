@@ -1,4 +1,4 @@
-#!/bin/python
+#!/data/data/com.termux/files/usr/bin/python
 
 from telethon import TelegramClient, events, tl
 
@@ -978,6 +978,9 @@ class SpotDaemon:
 
         return
 
+class SpotUi:
+    pass
+
 class SpotClient:
 
     daemon = None
@@ -1026,6 +1029,54 @@ class SpotClient:
 
         return True
 
+    def _is_daemon_running (self):
+
+        try:
+            with open("pid") as f:
+                pid = f.read()
+        except FileNotFoundError:
+            Logger("Couldn't read the pid of the daemon", "WARN")
+            return False
+        else:
+            Logger("Got the pid of the daemon")
+
+        try:
+            with open("/proc/" + pid + "/status") as f:
+                status = f.read()
+        except FileNotFoundError:
+            Logger("status file for the process does not exists", "WARN")
+            return False
+        else:
+            Logger("Got the process status")
+
+        process_name = ""
+
+        try:
+            for ch in status[6:]:
+                if ch == "\n":
+                    break
+                else:
+                    process_name = process_name + ch
+
+        except:
+            Logger("Failed to get the process name", "WARN")
+            return False
+        else:
+            Logger("Got the process name")
+
+        if process_name == "sdl":
+            Logger("The daemon is running.")
+            return True
+        else:
+            Logger(
+                "It's seems like it is different process\n"
+                    + "process id: \"" + pid + "\" "
+                    + "process name: \"" + process_name + "\"",
+                "WARN"
+            )
+            return False
+        return False
+
     def _launch_daemon (self):
 
         pid = os.fork()
@@ -1043,6 +1094,9 @@ class SpotClient:
             pid = os.fork()
 
             if pid > 0: # parent, just exit
+                # TESTING #
+                with open("pid", "w") as f:
+                    f.write(str(pid))
                 exit()
             else: # grand child, do the daemon suff
                 self.daemon.run()
@@ -1053,53 +1107,12 @@ class SpotClient:
 
         return self._check_ok_connection()
 
-    def _connect (self):
-        pass
-        return
-
-    def _is_running (self):
-        pass
-        return
-
-    # def _is_connected (self):
-    #     pass
-    #     return
-
-    def restart (self):
-        pass
-        return
-
-    # Call this everytime the client starts.
-    # And this will take care of starting the daemon
-    # (if it's not running) and attaching to the daemon
-    def connect (self):
-
-        if self._is_connected:
-            return True
-
-        print("ok")
-
-        if self._launch_daemon():
-            Logger("Launched the daemon, daemon is waiting for connections")
-        else:
-            Logger("Failed to launch the daemon, returning", "WARN")
-            return
-
-        Logger("Establishing the status connection")
-
-        self.status_socket = self._est_daemon_connection()
-        if self.status_socket is None:
-            Logger("Failed to establish the status connection", "WARN")
-
-        # TESTING: we won't be doing anything with the command_socket at the moment
-        self.command_socket = self._est_daemon_connection()
-        if self.command_socket is None:
-            Logger("Failed to establish the command connection", "WARN")
+    def _connect_to_daemon (self):
 
         while True:
 
             Logger("Reciving a new status")
-            size = self.status_socket.recv(4)
+            size = self._status_socket.recv(4)
             if size == b'':
                 Logger("Recieved a null byte probably the daemon got disconnected", "WARN")
                 break
@@ -1109,7 +1122,7 @@ class SpotClient:
             size = self._cal_payload_size(size)
 
             Logger("Recived one, size of the payload: " + str(size))
-            payload = self.status_socket.recv(size)
+            payload = self._status_socket.recv(size)
 
             if payload == b'':
                 Logger(
@@ -1122,13 +1135,41 @@ class SpotClient:
 
             print(status)
 
+        return
 
-        ### if not self._is_running():
-        ###     if not self._launch():
-        ###         return False
+    def restart (self):
+        pass
+        return
 
-        ### return self._connect()
+    # Call this everytime the client starts.
+    # And this will take care of starting the daemon
+    # (if it's not running) and attaching to the daemon
+    def connect (self):
 
+        if self._is_connected: # TODO: remove this
+            return True
+
+        if not self._is_daemon_running():
+            if not self._launch_daemon():
+                return False
+
+        Logger("Trying to establish the status connection")
+
+        self._status_socket = self._est_daemon_connection()
+        if self._status_socket is None:
+            Logger("Failed to establish the status connection", "WARN")
+            return False
+
+        Logger("Trying to establish the command connection")
+
+        # TESTING: we won't be doing anything with the command_socket at the moment
+        self._command_socket = self._est_daemon_connection()
+        if self._command_socket is None:
+            Logger("Failed to establish the command connection", "WARN")
+            return False
+
+        self._connect_to_daemon()
+        return False
 
 class SpotLrc():
 
