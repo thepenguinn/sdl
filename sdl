@@ -986,11 +986,13 @@ class SpotDaemon:
 
         exit()
 
+# do we need a SpotUi or just implement it in the Spotclient
 class SpotUi:
     pass
 
 class SpotClient:
 
+    ui = None
     daemon = None
 
     def __init__ (self, session, api_id, api_hash, port = 49524):
@@ -1116,6 +1118,7 @@ class SpotClient:
 
         return self._check_ok_connection()
 
+    # this is useless
     def _connect_to_daemon (self):
 
         while True:
@@ -1187,11 +1190,13 @@ class SpotClient:
         return True
 
     def _status_thread_handlier (self):
-
+        pass
         return
 
     def _input_thread_handlier (self):
 
+        while True:
+            time.sleep(2)
         return
 
     # This will block, and only returns only if something happened
@@ -1205,7 +1210,8 @@ class SpotClient:
         status_thread = None
         input_thread = None
 
-        start
+        draw_lock = Lock()
+        data_lock = Lock() # err, maybe ?
 
         return
 
