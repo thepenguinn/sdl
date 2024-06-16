@@ -467,6 +467,7 @@ class SpotDaemon:
         # TESTING #
         self.link_list = []
         self.info_list = []
+        self.stop_download = False
 
         return
 
@@ -497,6 +498,8 @@ class SpotDaemon:
 
         self._last_album_track_count = int(msg_text[lstart+16:])
 
+        return
+
     def _curate_files (self):
 
         if len(self._last_download_files) < 1:
@@ -506,6 +509,8 @@ class SpotDaemon:
         termuxcmd = ["termux-media-scan"]
 
         subprocess.run(termuxcmd + self._last_download_files)
+
+        return
 
     def _to_mb_str_bytes(self, size):
         return "%05.2f MB"%((size / 1024) / 1024)
@@ -518,6 +523,8 @@ class SpotDaemon:
         bar_str = f' {"#"*bars:<20} '
 
         print(percent + bar_str + speed_kb + " | " + self._to_mb_str_bytes(current) + " / " + self._to_mb_str_bytes(total), end = "\r")
+
+        return
 
     def _status_logger (self, message, level = None):
 
@@ -566,6 +573,8 @@ class SpotDaemon:
             level.name + ": " + str(cur_time) + ": " + str(message) + "\n"
         )
         self._status_logger_file_fd.flush()
+
+        return
 
     async def _download_audio (self, msg):
 
@@ -621,14 +630,7 @@ class SpotDaemon:
         else:
             self._status_logger("Size of the downloaded file doesn't match with the size from Telegram,\nprobably corrupted", self.Status.WARN)
 
-    async def _download_audio_files (self):
-
-        print("")
-        for msg in self._download_list:
-            await self._download_audio(msg)
-        print("")
-
-        await self.client.disconnect()
+        return
 
     async def _album_download_handler (self, event):
         await event.mark_read()
@@ -694,6 +696,7 @@ class SpotDaemon:
             self._status_logger("Recived one message with a photo")
             return
 
+
     async def _track_download_handler (self, event):
         await event.mark_read()
         if event.message.message == "Track not found." or event.message.message == "Invalid link ;)":
@@ -722,6 +725,8 @@ class SpotDaemon:
                 self._track_download_handler
             )
             await self._download_audio_files()
+
+        return
 
     async def _playlist_download_handler (self, event):
         await event.mark_read()
@@ -758,6 +763,8 @@ class SpotDaemon:
         else:
             self._status_logger("Recieved some other message", self.Status.WARN)
             print(event.message.message)
+
+        return
 
     async def _download (self, link_list):
 
@@ -835,37 +842,78 @@ class SpotDaemon:
                 self._status_logger("_last_download_status should be either Success or Failed", self.Status.WARN)
                 self._status_logger("Current value: " + self._last_download_status, self.Status.WARN)
 
+        return
 
-    def download (self, link_list):
+    # TODO: we don't need this
+    async def _download_blah (self):
 
-        self.client.start()
-        self.client.loop.run_until_complete(self._download(link_list))
-        return self._last_download_files
+
+        return
+
+    async def _query_info (self, url, url_type):
+
+
+
+
+        return
 
     def _daemon_logger (self, msg, level = "LOG"):
         self._daemon_logger_file_fd.write(msg + "\n")
         self._daemon_logger_file_fd.flush()
         return
 
-    def _download_thread_handler (self):
-        # this is where the download happens
-        # there are two parts to this
-        # the command thread (ie, the main thread)
-        # will adds urls to the url list
+    async def _download_audio_files (self):
 
-        time.sleep(1)
-        self._status_logger("lol")
-        time.sleep(1)
-        self._status_logger("hai again")
-        time.sleep(2)
-        self._status_logger("hai again after another 2 seconds")
-        time.sleep(3)
-        self._status_logger("That was too long, almost 3 seconds")
+        print("")
+        for msg in self._download_list:
+            await self._download_audio(msg)
+        print("")
 
-        self._status_logger("Now exiting")
+        await self.client.disconnect()
+
+        return
+
+    async def _query_task_handler (self, download_wait, query_wait):
+
+        cur_idx = 0
 
         while True:
-            time.sleep(2)
+            if len(self.info_list) > cur_idx:
+                pass
+            else:
+                await query_wait.acquire()
+
+        return
+
+    async def _download_task_handler (self, download_wait):
+
+        cur_idx = 0
+
+        return
+
+    async def _async_download_thread_handler (self, query_wait):
+
+        download_wait = asyncio.Lock()
+
+        download_task = asyncio.create_task(
+            self._download_task_handler(download_wait)
+        )
+
+        query_task = asyncio.create_task(
+            self._query_task_handler(download_wait, query_wait)
+        )
+
+        await download_task
+        await query_task
+
+        return
+
+    def _download_thread_handler (self, query_wait):
+
+        self.client.start()
+        self.client.loop.run_until_complete(
+            self._async_download_thread_handler(query_wait)
+        )
 
         return
 
@@ -873,7 +921,7 @@ class SpotDaemon:
 
         return four_bytes[0] | four_bytes[1] << 8 | four_bytes[2] << 16 | four_bytes[3] << 24
 
-    def _command_thread_handlier (self, command_socket):
+    def _command_thread_handler (self, command_socket, query_wait):
 
         while True:
             # TESTING: this should block here till daemon got disconnected
@@ -894,7 +942,7 @@ class SpotDaemon:
 
             command = json.loads(payload.decode())
 
-        self._daemon_logger("Leaving the _command_thread_handlier loop", "WARN")
+        self._daemon_logger("Leaving the _command_thread_handler loop", "WARN")
 
         return
 
@@ -908,6 +956,7 @@ class SpotDaemon:
         return server
 
     def run (self):
+        # daemon
 
         self._init()
 
@@ -925,6 +974,10 @@ class SpotDaemon:
         self._data_lock = Lock()
 
         download_thread = None
+
+        # the command thread (main thread) will releases the
+        # _query_wait everytime it adds a link to query
+        query_wait = asyncio.Lock()
 
         while True:
 
@@ -972,14 +1025,17 @@ class SpotDaemon:
                 # this thread should never raise any exceptions that
                 # means this thread should only stop when the daemon
                 # is exiting
-                download_thread = Thread(target = self._download_thread_handler)
+                download_thread = Thread(
+                    target = self._download_thread_handler,
+                    args = [query_wait]
+                )
 
                 self._daemon_logger("Starting the download thread")
                 download_thread.start()
 
             # main thread will handle the command connection
             self._daemon_logger("Starting the command thread")
-            self._command_thread_handlier(command_socket)
+            self._command_thread_handler(command_socket, query_wait)
 
             if self._stop_daemon:
                 download_thread.join()
@@ -1203,11 +1259,11 @@ class SpotClient:
 
         return True
 
-    def _status_thread_handlier (self):
+    def _status_thread_handler (self):
         pass
         return
 
-    def _input_thread_handlier (self):
+    def _input_thread_handler (self):
 
         while True:
             time.sleep(2)
