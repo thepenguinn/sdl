@@ -3,6 +3,7 @@
 from telethon import TelegramClient, events, tl
 
 from pyfzf.pyfzf import FzfPrompt
+from concurrent.futures import ThreadPoolExecutor
 from mutagen.id3 import ID3, USLT, TPE1
 from threading import Thread, Lock
 from bs4 import BeautifulSoup
@@ -423,6 +424,14 @@ class SpotDaemon:
         ]
     )
 
+    UrlType = Enum(
+        "UrlType", [
+            "PLAYLIST",
+            "ALBUM",
+            "TRACK"
+        ]
+    )
+
     def __init__ (self, session, api_id, api_hash, port, backlog = 5):
 
         self._session = session
@@ -440,6 +449,10 @@ class SpotDaemon:
         ###     self.client = TelegramClient(
         ###         self._session, self._api_id, self._api_hash
         ###     )
+
+        if self._daemon_logger_file_fd is None:
+            self._daemon_logger_file_fd = open(self._daemon_logger_file_path, "w")
+            self._daemon_logger_file_fd.write("Aloha!\n")
 
         # Everything that related with downloading files
         self._last_download_status = None
@@ -467,6 +480,7 @@ class SpotDaemon:
         # TESTING #
         self.link_list = []
         self.info_list = []
+        self.download_list = []
         self.stop_download = False
 
         return
@@ -561,7 +575,9 @@ class SpotDaemon:
         except Exception as e:
             # self._status_logger_file_fd.write(e.args[0])
             # self._status_logger_file_fd.flush()
-            self._data_lock.acquire()
+            await self._loop.run_in_executor(
+                self._pool, self._data_lock.acquire
+            )
             self._status_pending.append(status)
         finally:
             if self._status_lock.locked():
@@ -576,7 +592,7 @@ class SpotDaemon:
 
         return
 
-    async def _download_audio (self, msg):
+    async def _download_audio (self, msg, track):
 
         file_name = ""
         for i in msg.file.name:
@@ -613,22 +629,88 @@ class SpotDaemon:
             self._status_logger("Starting a fresh download...")
             tmp_file_fd = open(tmp_file_name, "wb")
 
-        print("File: " + file_name + " | Size: " + self._to_mb_str_bytes(msg.document.size))
+        # print("File: " + file_name + " | Size: " + self._to_mb_str_bytes(msg.document.size))
 
         self._download_start_time = time.time()
         async for chunk in self.client.iter_download(
             msg.document, offset = download_size, request_size = REQUEST_SIZE):
+
             download_size += len(chunk)
             tmp_file_fd.write(chunk)
-            self._prog_callback(download_size, msg.document.size)
-        print("")
+
+            self._status_logger(download_size)
+            await self._loop.run_in_executor(
+                self._pool, self._data_lock.acquire
+            )
+            track["downloaded_bytes"] = download_size
+            self._data_lock.release()
+            # self._prog_callback(download_size, msg.document.size)
+        # print("")
 
         tmp_file_fd.close()
 
         if download_size == msg.document.size:
             os.rename(tmp_file_name, file_name)
         else:
-            self._status_logger("Size of the downloaded file doesn't match with the size from Telegram,\nprobably corrupted", self.Status.WARN)
+            self._status_logger(
+                "Size of the downloaded file doesn't match with the size from Telegram,\nprobably corrupted",
+                self.Status.WARN
+            )
+
+        return
+
+    async def _test_iter_download(self, delay = 1, gaps = 10):
+
+        for i in range(gaps):
+            await asyncio.sleep(delay)
+            yield i
+        return
+
+    async def _test_download_audio (self, msg, track):
+
+        async for chunck in self._test_iter_download():
+            self._status_logger(chunk)
+            await self._loop.run_in_executor(
+                self._pool, self._data_lock.acquire
+            )
+            track["downloaded_bytes"] = chunk
+            self._data_lock.release()
+
+        return
+
+    def _add_to_info_list (self, message):
+
+        track = {
+            "message": message,
+            "file_name": message.file.name,
+            "file_id": message.file.id,
+            "artist_name": message.file.performer,
+            "track_name": message.file.title,
+            "downloaded_bytes": 0,
+            "total_bytes": message.file.size,
+            "duration": message.file.duration,
+            "discarded": False
+        }
+
+        await self._loop.run_in_executor(
+            self._pool, self._data_lock.acquire
+        )
+        # we will just append the track to the last element of info list
+
+        idx = len(self.info_list) - 1
+        if idx < 0:
+            self._status_logger(
+                "info_list is empty, this shouldn't happen",
+                self.Status.WARN
+            )
+            return
+
+        self.info_list[idx]["tracks"].append(track)
+
+        self._data_lock.release()
+
+        if self.download_wait.locked():
+            self.download_wait.release()
 
         return
 
@@ -637,14 +719,14 @@ class SpotDaemon:
         if event.message.message == "Invalid link ;)":
             self._status_logger("Link was Invalid. Disconnecting...")
             self._last_download_status = "Failed"
-            await self.client.disconnect()
+            self.handler_lock.release()
 
         if event.audio:
             if not self._clicked_button:
                 self._status_logger("Directly recieving the tracks")
                 self._clicked_button = True
 
-            self._download_list.append(event)
+            self._add_to_info_list(event)
             # await self._download_audio(event)
             self._last_album_download_count += 1
             if self._last_album_track_count == self._last_album_download_count and self._one_photo_recieved:
@@ -654,7 +736,7 @@ class SpotDaemon:
                 self.client.remove_event_handler(
                     self._album_download_handler
                 )
-                await self._download_audio_files()
+                self.handler_lock.release()
             return
         elif event.message.message == "Downloading…":
             self._status_logger("Recived one message with a Downloading…")
@@ -705,12 +787,12 @@ class SpotDaemon:
             else:
                 self._status_logger("Link was Invalid. Disconnecting...", self.Status.WARN)
             self._last_download_status = "Failed"
-            await self.client.disconnect()
+            self.handler_lock.release()
 
         if event.audio:
             self._status_logger("Recived one message with an audio")
             self._one_track_recieved = True
-            self._download_list.append(event)
+            self._add_to_info_list(event)
             # await self._download_audio(event)
 
         if event.photo:
@@ -724,8 +806,7 @@ class SpotDaemon:
             self.client.remove_event_handler(
                 self._track_download_handler
             )
-            await self._download_audio_files()
-
+            self.handler_lock.release()
         return
 
     async def _playlist_download_handler (self, event):
@@ -733,7 +814,7 @@ class SpotDaemon:
         if event.message.message == "Invalid link ;)":
             self._status_logger("Link was Invalid. Disconnecting...")
             self._last_download_status = "Failed"
-            await self.client.disconnect()
+            self.handler_lock.release()
 
         if event.buttons:
             if self._clicked_button:
@@ -749,7 +830,7 @@ class SpotDaemon:
                 self._clicked_button = True
                 await event.buttons[0][0].click()
         elif event.audio:
-            self._download_list.append(event)
+            self._add_to_info_list(event)
             self._last_playlist_download_count += 1
         elif event.message.message == "Finished.":
             self._status_logger("Downloaded all the tracks. Disconnecting...")
@@ -759,13 +840,14 @@ class SpotDaemon:
                 self._playlist_download_handler
             )
             # print(self._last_playlist_download_count)
-            await self._download_audio_files()
+            self.handler_lock.release()
         else:
             self._status_logger("Recieved some other message", self.Status.WARN)
             print(event.message.message)
 
         return
 
+    # TODO: remove this we don't need this
     async def _download (self, link_list):
 
         for link in link_list:
@@ -778,82 +860,13 @@ class SpotDaemon:
                 await self.client.connect()
                 self._status_logger("Connected to Telegram")
 
-            self._status_logger("Sending the url to deezload2bot")
-            await self.client.send_message(
-                "deezload2bot", link_url
-            )
             if link_type == "album":
-                self._status_logger("Attaching album download handler...")
-                self.client.add_event_handler(
-                    self._album_download_handler,
-                    events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
-                )
-                self._last_album_track_count = 0
-                self._last_album_title = ""
-                self._last_album_artist = ""
-                self._last_album_download_count = 0
-                self._clicked_button = False
             elif link_type == "track":
-                self._status_logger("Attaching track download handler...")
-                self.client.add_event_handler(
-                    self._track_download_handler,
-                    events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
-                )
-                self._one_track_recieved = False
             elif link_type == "playlist":
-                self._status_logger("Attaching playlist download handler...")
-                self.client.add_event_handler(
-                    self._playlist_download_handler,
-                    events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
-                )
-                self._clicked_button = False
-                self._last_playlist_download_count = 0
-
-
-            self._last_download_status = None
-            self._last_download_files = []
-            self._one_photo_recieved = False
-            self._download_list = []
-
-            self._status_logger("Waiting for the reply from deezload2bot...")
-            await self.client.run_until_disconnected()
-
-            if self._last_download_status == "Success":
-                self._status_logger("Succeded downloading the file(s)")
-                self._curate_files()
-            elif self._last_download_status == "Failed":
-                if link_type == "album":
-                    self._status_logger("Dettaching track download handler...")
-                    self.client.remove_event_handler(
-                        self._track_download_handler
-                    )
-                elif link_type == "track":
-                    self._status_logger("Dettaching album download handler...")
-                    self.client.remove_event_handler(
-                        self._album_download_handler
-                    )
-                elif link_type == "playlist":
-                    self._status_logger("Dettaching playlist download handler...")
-                    self.client.remove_event_handler(
-                        self._playlist_download_handler
-                    )
-                self._status_logger("Failed downloading the file(s)", self.Status.WARN)
-            else:
-                self._status_logger("_last_download_status should be either Success or Failed", self.Status.WARN)
-                self._status_logger("Current value: " + self._last_download_status, self.Status.WARN)
-
-        return
-
-    # TODO: we don't need this
-    async def _download_blah (self):
-
-
-        return
-
-    async def _query_info (self, url, url_type):
 
 
 
+            # after
 
         return
 
@@ -862,32 +875,165 @@ class SpotDaemon:
         self._daemon_logger_file_fd.flush()
         return
 
-    async def _download_audio_files (self):
-
-        print("")
-        for msg in self._download_list:
-            await self._download_audio(msg)
-        print("")
-
-        await self.client.disconnect()
-
-        return
-
     async def _query_task_handler (self, download_wait, query_wait):
 
         cur_idx = 0
 
+        # the handers will release this lock, once they are done
+        # handling the query
+        self.handler_lock = asyncio.Lock()
+
+        # when the handlers add a new track to the info list
+        # _add_to_info_list can simply self.download_wait.release() this lock.
+        # And I don't think we can pass other arguments to the event
+        # handlers in any other way.
+        self.download_wait = download_wait
+
         while True:
-            if len(self.info_list) > cur_idx:
+            await self._loop.run_in_executor(
+                self._pool, self._data_lock.acquire
+            )
+            if len(self.link_list) > cur_idx:
+                # query for the file and info
+                link = self.link_list[cur_idx]
+                url = link["url"]
+                url_type = link["url_type"]
+
+                self.info_list.append(
+                    {
+                        "url_type": url_type,
+                        "tracks": [],
+                        "discarded": False
+                    }
+                )
+
+                self._data_lock.release()
+
+                self._status_logger("Sending the url to deezload2bot")
+                await self.client.send_message(
+                    "deezload2bot", url
+                )
+
+                if url_type == self.UrlType.TRACK.value:
+                    self._status_logger("Attaching track download handler...")
+                    self.client.add_event_handler(
+                        self._track_download_handler,
+                        events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
+                    )
+                    self._one_track_recieved = False
+                elif url_type == self.UrlType.ALBUM.value:
+                    self._status_logger("Attaching album download handler...")
+                    self.client.add_event_handler(
+                        self._album_download_handler,
+                        events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
+                    )
+                    self._last_album_track_count = 0
+                    self._last_album_title = ""
+                    self._last_album_artist = ""
+                    self._last_album_download_count = 0
+                    self._clicked_button = False
+                elif url_type == self.UrlType.PLAYLIST.value:
+                    self._status_logger("Attaching playlist download handler...")
+                    self.client.add_event_handler(
+                        self._playlist_download_handler,
+                        events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
+                    )
+                    self._clicked_button = False
+                    self._last_playlist_download_count = 0
+                else:
+                    # TODO: we still add this one as an invalid one
+                    pass
+
+                self._last_download_status = None
+                self._last_download_files = []
+                self._one_photo_recieved = False
+                self._download_list = []
+
+                if self.handler_lock.locked():
+                    self._status_logger("Releasing the handler lock")
+                    self.handler_lock.release()
+
+
+                self._status_logger("Acquiring the handler lock")
+                await self.handler_lock.acquire()
+
+                self._status_logger("Waiting for the reply from deezload2bot...")
+                # the handler should release this lock
+                await self.handler_lock.acquire()
+
+                # after
+
+                # TODO: convert this Success and Failed into enums
+                if self._last_download_status == "Success":
+                    self._status_logger("Succeded downloading the file(s)")
+                    # TODO: do we really need to do this right now ?
+                    self._curate_files()
+                elif self._last_download_status == "Failed":
+                    # dettaching the handlers incase we failed
+                    # TODO: move this from here to handlers, maybe ?
+                    if url_type == self.UrlType.TRACK.value:
+                        self._status_logger("Dettaching track download handler...")
+                        self.client.remove_event_handler(
+                            self._track_download_handler
+                        )
+                    elif url_type == self.UrlType.ALBUM.value:
+                        self._status_logger("Dettaching album download handler...")
+                        self.client.remove_event_handler(
+                            self._album_download_handler
+                        )
+                    elif url_type == self.UrlType.PLAYLIST.value:
+                        self._status_logger("Dettaching playlist download handler...")
+                        self.client.remove_event_handler(
+                            self._playlist_download_handler
+                        )
+                    self._status_logger(
+                        "Failed downloading the file(s)", self.Status.WARN
+                    )
+                else:
+                    # TODO: adflk
+                    self._status_logger(
+                        "_last_download_status should have been either Success or Failed",
+                        self.Status.WARN
+                    )
+                    self._status_logger(
+                        "Current value: " + self._last_download_status,
+                        self.Status.WARN
+                    )
+
+
+                cur_idx += 1
                 pass
             else:
-                await query_wait.acquire()
-
+                self._data_lock.release()
+                await self._loop.run_in_executor(
+                    self._pool, query_wait.acquire
+                )
         return
 
     async def _download_task_handler (self, download_wait):
 
-        cur_idx = 0
+        while True:
+            await self._loop.run_in_executor(
+                self._pool, self._data_lock.acquire
+            )
+            if len(self.download_list) > 0:
+
+                track = self.download_list[0]
+                message = track["message"]
+
+                self._data_lock.release()
+
+                await self._test_download_audio(message, track)
+
+                await self._loop.run_in_executor(
+                    self._pool, self._data_lock.acquire
+                )
+                self.download_list.pop(0)
+                self._data_lock.release()
+
+            else:
+                self._data_lock.release()
+                await download_wait.acquire()
 
         return
 
@@ -909,6 +1055,9 @@ class SpotDaemon:
         return
 
     def _download_thread_handler (self, query_wait):
+
+        self._pool = ThreadPoolExecutor()
+        self._loop = asyncio.get_event_loop()
 
         self.client.start()
         self.client.loop.run_until_complete(
@@ -962,11 +1111,7 @@ class SpotDaemon:
 
         self._stop_daemon = False
 
-        if self._daemon_logger_file_fd is None:
-            self._daemon_logger_file_fd = open(self._daemon_logger_file_path, "w")
-            self._daemon_logger_file_fd.write("Aloha!\n")
-
-        self._daemon_logger("Started the server")
+        self._daemon_logger("Starting the server")
         server = self._daemon_server_init(self._port, self._backlog)
         self._daemon_logger("Succesfully initialized the server")
 
@@ -977,7 +1122,19 @@ class SpotDaemon:
 
         # the command thread (main thread) will releases the
         # _query_wait everytime it adds a link to query
-        query_wait = asyncio.Lock()
+        # NOTE: Unfortunately this doesn't work
+        # asyncio.Lock is not thread safe
+
+        # _pool = concurrent.futures.ThreadPoolExecutor()
+        #
+        # async def work(lock, other_args...):
+        #     # lock is a threading.Lock shared between threads
+        #
+        #     loop = asyncio.get_event_loop()
+        #     # Acquire the lock in a worker thread, suspending us while waiting.
+        #     await loop.run_in_executor(_pool, lock.acquire)
+
+        query_wait = Lock()
 
         while True:
 
@@ -1272,6 +1429,7 @@ class SpotClient:
     # This will block, and only returns only if something happened
     # terribly, or when we are exiting.
     def run (self):
+        # client
 
         if not self._daemon_is_connected:
             if not self.connect():
