@@ -432,13 +432,13 @@ class SpotDaemon:
         ]
     )
 
-    # DownloadStatus = Enum(
-    #     "DownloadStatus", [
-    #         "success",
-    #         "failure",
-    #         "invalid",
-    #     ]
-    # )
+    DownloadStatus = Enum(
+        "DownloadStatus", [
+            "SUCCESS",
+            "FAILURE",
+            "INVALID",
+        ]
+    )
 
     def __init__ (self, session, api_id, api_hash, port, backlog = 5):
 
@@ -463,7 +463,7 @@ class SpotDaemon:
             self._daemon_logger_file_fd.write("Aloha!\n")
 
         # Everything that related with downloading files
-        self._last_download_status = None
+        self._last_download_status = self.DownloadStatus.FAILURE
         self._last_album_track_count = 0
         self._last_album_title = ""
         self._last_album_artist = ""
@@ -725,7 +725,7 @@ class SpotDaemon:
         await event.mark_read()
         if event.message.message == "Invalid link ;)":
             self._status_logger("Link was Invalid. Disconnecting...")
-            self._last_download_status = "Failed"
+            self._last_download_status = self.DownloadStatus.FAILURE
             self.handler_event.set()
 
         if event.audio:
@@ -738,7 +738,7 @@ class SpotDaemon:
             self._last_album_download_count += 1
             if self._last_album_track_count == self._last_album_download_count and self._one_photo_recieved:
                 self._status_logger("Downloaded all the tracks. Disconnecting...")
-                self._last_download_status = "Success"
+                self._last_download_status = self.DownloadStatus.SUCCESS
                 self._status_logger("Dettaching album download handler...")
                 self.client.remove_event_handler(
                     self._album_download_handler
@@ -793,7 +793,7 @@ class SpotDaemon:
                 self._status_logger("Track no found. Disconnecting...", self.Status.WARN)
             else:
                 self._status_logger("Link was Invalid. Disconnecting...", self.Status.WARN)
-            self._last_download_status = "Failed"
+            self._last_download_status = self.DownloadStatus.FAILURE
             self.handler_event.set()
 
         if event.audio:
@@ -808,7 +808,7 @@ class SpotDaemon:
 
         if self._one_photo_recieved and self._one_track_recieved:
             self._status_logger("Recieved the track and the photo. Disconnecting...")
-            self._last_download_status = "Success"
+            self._last_download_status = self.DownloadStatus.SUCCESS
             self._status_logger("Dettaching track download handler...")
             self.client.remove_event_handler(
                 self._track_download_handler
@@ -820,7 +820,7 @@ class SpotDaemon:
         await event.mark_read()
         if event.message.message == "Invalid link ;)":
             self._status_logger("Link was Invalid. Disconnecting...")
-            self._last_download_status = "Failed"
+            self._last_download_status = self.DownloadStatus.FAILURE
             self.handler_event.set()
 
         if event.buttons:
@@ -841,7 +841,7 @@ class SpotDaemon:
             self._last_playlist_download_count += 1
         elif event.message.message == "Finished.":
             self._status_logger("Downloaded all the tracks. Disconnecting...")
-            self._last_download_status = "Success"
+            self._last_download_status = self.DownloadStatus.SUCCESS
             self._status_logger("Dettaching playlist download handler...")
             self.client.remove_event_handler(
                 self._playlist_download_handler
@@ -929,7 +929,7 @@ class SpotDaemon:
                     # TODO: we still add this one as an invalid one
                     pass
 
-                self._last_download_status = None
+                self._last_download_status = self.DownloadStatus.FAILURE
                 self._last_download_files = []
                 self._one_photo_recieved = False
                 self._download_list = []
@@ -941,12 +941,11 @@ class SpotDaemon:
 
                 # after
 
-                # TODO: convert this Success and Failed into enums
-                if self._last_download_status == "Success":
+                if self._last_download_status == self.DownloadStatus.SUCCESS:
                     self._status_logger("Succeded downloading the file(s)")
                     # TODO: do we really need to do this right now ?
                     self._curate_files()
-                elif self._last_download_status == "Failed":
+                elif self._last_download_status == self.DownloadStatus.FAILURE:
                     # dettaching the handlers incase we failed
                     # TODO: move this from here to handlers, maybe ?
                     if url_type == self.UrlType.TRACK.value:
@@ -974,7 +973,7 @@ class SpotDaemon:
                         self.Status.WARN
                     )
                     self._status_logger(
-                        "Current value: " + self._last_download_status,
+                        "Current value: " + self._last_download_status.name,
                         self.Status.WARN
                     )
 
