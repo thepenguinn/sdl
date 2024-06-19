@@ -432,6 +432,14 @@ class SpotDaemon:
         ]
     )
 
+    # DownloadStatus = Enum(
+    #     "DownloadStatus", [
+    #         "success",
+    #         "failure",
+    #         "invalid",
+    #     ]
+    # )
+
     def __init__ (self, session, api_id, api_hash, port, backlog = 5):
 
         self._session = session
@@ -709,9 +717,7 @@ class SpotDaemon:
 
         self._data_lock.release()
 
-        # TODO: use asyncio.Event()
-        if self.download_wait.locked():
-            self.download_wait.release()
+        self.info_event.set()
 
         return
 
@@ -720,7 +726,7 @@ class SpotDaemon:
         if event.message.message == "Invalid link ;)":
             self._status_logger("Link was Invalid. Disconnecting...")
             self._last_download_status = "Failed"
-            self.handler_lock.release()
+            self.handler_event.set()
 
         if event.audio:
             if not self._clicked_button:
@@ -737,7 +743,7 @@ class SpotDaemon:
                 self.client.remove_event_handler(
                     self._album_download_handler
                 )
-                self.handler_lock.release()
+                self.handler_event.set()
             return
         elif event.message.message == "Downloading…":
             self._status_logger("Recived one message with a Downloading…")
@@ -788,7 +794,7 @@ class SpotDaemon:
             else:
                 self._status_logger("Link was Invalid. Disconnecting...", self.Status.WARN)
             self._last_download_status = "Failed"
-            self.handler_lock.release()
+            self.handler_event.set()
 
         if event.audio:
             self._status_logger("Recived one message with an audio")
@@ -807,7 +813,7 @@ class SpotDaemon:
             self.client.remove_event_handler(
                 self._track_download_handler
             )
-            self.handler_lock.release()
+            self.handler_event.set()
         return
 
     async def _playlist_download_handler (self, event):
@@ -815,7 +821,7 @@ class SpotDaemon:
         if event.message.message == "Invalid link ;)":
             self._status_logger("Link was Invalid. Disconnecting...")
             self._last_download_status = "Failed"
-            self.handler_lock.release()
+            self.handler_event.set()
 
         if event.buttons:
             if self._clicked_button:
@@ -841,7 +847,7 @@ class SpotDaemon:
                 self._playlist_download_handler
             )
             # print(self._last_playlist_download_count)
-            self.handler_lock.release()
+            self.handler_event.set()
         else:
             self._status_logger("Recieved some other message", self.Status.WARN)
             print(event.message.message)
@@ -853,19 +859,19 @@ class SpotDaemon:
         self._daemon_logger_file_fd.flush()
         return
 
-    async def _query_task_handler (self, download_wait, query_wait):
+    async def _query_task_handler (self, info_event, query_event):
 
         cur_idx = 0
 
-        # the handers will release this lock, once they are done
+        # the handers will clear this event, once they are done
         # handling the query
-        self.handler_lock = asyncio.Lock()
+        self.hanler_event = asyncio.Lock()
 
         # when the handlers add a new track to the info list
-        # _add_to_info_list can simply self.download_wait.release() this lock.
+        # _add_to_info_list can simply self.info_event.clear() this event.
         # And I don't think we can pass other arguments to the event
         # handlers in any other way.
-        self.download_wait = download_wait
+        self.info_event = info_event
 
         while True:
             await self._loop.run_in_executor(
@@ -892,6 +898,7 @@ class SpotDaemon:
                     "deezload2bot", url
                 )
 
+                # TODO: we probably don't need the .value
                 if url_type == self.UrlType.TRACK.value:
                     self._status_logger("Attaching track download handler...")
                     self.client.add_event_handler(
@@ -927,17 +934,10 @@ class SpotDaemon:
                 self._one_photo_recieved = False
                 self._download_list = []
 
-                if self.handler_lock.locked():
-                    self._status_logger("Releasing the handler lock")
-                    self.handler_lock.release()
-
-
-                self._status_logger("Acquiring the handler lock")
-                await self.handler_lock.acquire()
-
                 self._status_logger("Waiting for the reply from deezload2bot...")
-                # the handler should release this lock
-                await self.handler_lock.acquire()
+                # the handler should set this event
+                self.handler_event.clear()
+                await self.handler_event.wait()
 
                 # after
 
@@ -985,11 +985,11 @@ class SpotDaemon:
                 self._data_lock.release()
                 # TODO: use threading event
                 await self._loop.run_in_executor(
-                    self._pool, query_wait.acquire
+                    self._pool, query_event.wait
                 )
         return
 
-    async def _download_task_handler (self, download_wait):
+    async def _download_task_handler (self, info_event):
 
         while True:
             await self._loop.run_in_executor(
@@ -1012,21 +1012,20 @@ class SpotDaemon:
 
             else:
                 self._data_lock.release()
-                # TODO: use asyncio.Event()
-                await download_wait.acquire()
+                await info_event.wait()
 
         return
 
-    async def _async_download_thread_handler (self, query_wait):
+    async def _async_download_thread_handler (self, query_event):
 
-        download_wait = asyncio.Lock()
+        info_event = asyncio.Event()
 
         download_task = asyncio.create_task(
-            self._download_task_handler(download_wait)
+            self._download_task_handler(info_event)
         )
 
         query_task = asyncio.create_task(
-            self._query_task_handler(download_wait, query_wait)
+            self._query_task_handler(info_event, query_event)
         )
 
         await download_task
@@ -1034,14 +1033,14 @@ class SpotDaemon:
 
         return
 
-    def _download_thread_handler (self, query_wait):
+    def _download_thread_handler (self, query_event):
 
         self._pool = ThreadPoolExecutor()
         self._loop = asyncio.get_event_loop()
 
         self.client.start()
         self.client.loop.run_until_complete(
-            self._async_download_thread_handler(query_wait)
+            self._async_download_thread_handler(query_event)
         )
 
         return
@@ -1050,7 +1049,7 @@ class SpotDaemon:
 
         return four_bytes[0] | four_bytes[1] << 8 | four_bytes[2] << 16 | four_bytes[3] << 24
 
-    def _command_thread_handler (self, command_socket, query_wait):
+    def _command_thread_handler (self, command_socket, query_event):
 
         while True:
             # TESTING: this should block here till daemon got disconnected
@@ -1100,8 +1099,7 @@ class SpotDaemon:
 
         download_thread = None
 
-        query_event = threading.Lock()
-        query_wait = threading.Lock()
+        query_event = threading.Event()
 
         while True:
 
@@ -1151,7 +1149,7 @@ class SpotDaemon:
                 # is exiting
                 download_thread = threading.Thread(
                     target = self._download_thread_handler,
-                    args = [query_wait]
+                    args = [query_event]
                 )
 
                 self._daemon_logger("Starting the download thread")
@@ -1159,7 +1157,7 @@ class SpotDaemon:
 
             # main thread will handle the command connection
             self._daemon_logger("Starting the command thread")
-            self._command_thread_handler(command_socket, query_wait)
+            self._command_thread_handler(command_socket, query_event)
 
             if self._stop_daemon:
                 download_thread.join()
