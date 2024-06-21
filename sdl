@@ -548,7 +548,7 @@ class SpotDaemon:
 
         return
 
-    def _status_logger (self, message, level = None):
+    async def _status_logger (self, message, level = None):
 
         if level is None:
             level = self.Status.LOG
@@ -611,7 +611,7 @@ class SpotDaemon:
         file_name = Music_Dir + "/" + file_name
 
         if os.path.isfile(file_name):
-            self._status_logger("File exists, skipping the download", self.Status.WARN)
+            await self._status_logger("File exists, skipping the download", self.Status.WARN)
             return
 
         self._last_download_files.append(file_name)
@@ -622,19 +622,19 @@ class SpotDaemon:
         tmp_file_name = Music_Dir + "/" + str(msg.document.id) + ".temp"
 
         if os.path.isfile(tmp_file_name):
-            self._status_logger("Temp file exists, resuming download...")
+            await self._status_logger("Temp file exists, resuming download...")
             tmp_file_fd = open(tmp_file_name, "ab")
             download_size = tmp_file_fd.tell()
             if msg.document.size == download_size:
-                self._status_logger("File is already downloaded")
+                await self._status_logger("File is already downloaded")
             elif int(download_size / REQUEST_SIZE) * REQUEST_SIZE != download_size:
-                self._status_logger(
+                await self._status_logger(
                     "Temp file size is not a multiple o REQUEST_SIZE\n"
                         + "Request Size: " + str(REQUEST_SIZE)
                         + ", Downloaded Size: " + str(download_size)
                 )
         else:
-            self._status_logger("Starting a fresh download...")
+            await self._status_logger("Starting a fresh download...")
             tmp_file_fd = open(tmp_file_name, "wb")
 
         # print("File: " + file_name + " | Size: " + self._to_mb_str_bytes(msg.document.size))
@@ -646,7 +646,7 @@ class SpotDaemon:
             download_size += len(chunk)
             tmp_file_fd.write(chunk)
 
-            self._status_logger(download_size)
+            await self._status_logger(download_size)
             await self._loop.run_in_executor(
                 self._pool, self._data_lock.acquire
             )
@@ -660,7 +660,7 @@ class SpotDaemon:
         if download_size == msg.document.size:
             os.rename(tmp_file_name, file_name)
         else:
-            self._status_logger(
+            await self._status_logger(
                 "Size of the downloaded file doesn't match with the size from Telegram,\nprobably corrupted",
                 self.Status.WARN
             )
@@ -677,7 +677,7 @@ class SpotDaemon:
     async def _test_download_audio (self, msg, track):
 
         async for chunck in self._test_iter_download():
-            self._status_logger(chunk)
+            await self._status_logger(chunk)
             await self._loop.run_in_executor(
                 self._pool, self._data_lock.acquire
             )
@@ -686,7 +686,7 @@ class SpotDaemon:
 
         return
 
-    def _add_to_info_list (self, message):
+    async def _add_to_info_list (self, message):
 
         track = {
             "message": message,
@@ -707,7 +707,7 @@ class SpotDaemon:
 
         idx = len(self.info_list) - 1
         if idx < 0:
-            self._status_logger(
+            await self._status_logger(
                 "info_list is empty, this shouldn't happen",
                 self.Status.WARN
             )
@@ -724,65 +724,65 @@ class SpotDaemon:
     async def _album_download_handler (self, event):
         await event.mark_read()
         if event.message.message == "Invalid link ;)":
-            self._status_logger("Link was Invalid. Disconnecting...")
+            await self._status_logger("Link was Invalid. Disconnecting...")
             self._last_download_status = self.DownloadStatus.FAILURE
             self.handler_event.set()
 
         if event.audio:
             if not self._clicked_button:
-                self._status_logger("Directly recieving the tracks")
+                await self._status_logger("Directly recieving the tracks")
                 self._clicked_button = True
 
-            self._add_to_info_list(event)
+            await self._add_to_info_list(event)
             # await self._download_audio(event)
             self._last_album_download_count += 1
             if self._last_album_track_count == self._last_album_download_count and self._one_photo_recieved:
-                self._status_logger("Downloaded all the tracks. Disconnecting...")
+                await self._status_logger("Downloaded all the tracks. Disconnecting...")
                 self._last_download_status = self.DownloadStatus.SUCCESS
-                self._status_logger("Dettaching album download handler...")
+                await self._status_logger("Dettaching album download handler...")
                 self.client.remove_event_handler(
                     self._album_download_handler
                 )
                 self.handler_event.set()
             return
         elif event.message.message == "Downloading…":
-            self._status_logger("Recived one message with a Downloading…")
+            await self._status_logger("Recived one message with a Downloading…")
             return
         elif event.buttons:
 
             if self._clicked_button:
-                self._status_logger("Got another message with buttons", self.Status.WARN)
+                await self._status_logger("Got another message with buttons", self.Status.WARN)
                 return
 
             # This must be the first msg if the url is a proper one
             self._set_last_album_info(event.message.message)
-            self._status_logger("Album Track Count: " + str(self._last_album_track_count))
-            self._status_logger("Message has buttons")
+            await self._status_logger("Album Track Count: " + str(self._last_album_track_count))
+            await self._status_logger("Message has buttons")
             for row in event.buttons:
                 for btn in row:
                     if btn.text == "GET ALL ⬇️":
-                        self._status_logger("Clicking GET ALL button")
+                        await self._status_logger("Clicking GET ALL button")
                         self._clicked_button = True
                         await btn.click()
             if not self._clicked_button:
-                self._status_logger("Seems like there were no GET ALL button")
+                await self._status_logger("Seems like there were no GET ALL button")
                 if self._last_album_track_count == 1:
-                    self._status_logger("Clicking the first button")
+                    await self._status_logger("Clicking the first button")
                     self._one_photo_recieved = True
                     self._clicked_button = True
                     await event.buttons[0][0].click()
                 else:
-                    self._status_logger("Track Count is not 1, somethings wrong", self.Status.WARN)
+                    await self._status_logger("Track Count is not 1, somethings wrong", self.Status.WARN)
 
         elif event.photo:
             if not self._clicked_button:
-                self._status_logger("Seems like we are recieving tracks directly")
+                await self._status_logger("Seems like we are recieving tracks directly")
                 self._set_last_album_info(event.message.message)
-                self._status_logger("Album Track Count: " + str(self._last_album_track_count))
+                await self._status_logger("Album Track Count: " + str(self._last_album_track_count))
                 self._clicked_button = True
 
             self._one_photo_recieved = True
-            self._status_logger("Recived one message with a photo")
+            await self._status_logger("Recived one message with a photo")
             return
 
 
@@ -790,26 +790,26 @@ class SpotDaemon:
         await event.mark_read()
         if event.message.message == "Track not found." or event.message.message == "Invalid link ;)":
             if event.message.message == "Track not found.":
-                self._status_logger("Track no found. Disconnecting...", self.Status.WARN)
+                await self._status_logger("Track no found. Disconnecting...", self.Status.WARN)
             else:
-                self._status_logger("Link was Invalid. Disconnecting...", self.Status.WARN)
+                await self._status_logger("Link was Invalid. Disconnecting...", self.Status.WARN)
             self._last_download_status = self.DownloadStatus.FAILURE
             self.handler_event.set()
 
         if event.audio:
-            self._status_logger("Recived one message with an audio")
+            await self._status_logger("Recived one message with an audio")
             self._one_track_recieved = True
-            self._add_to_info_list(event)
+            await self._add_to_info_list(event)
             # await self._download_audio(event)
 
         if event.photo:
-            self._status_logger("Recived one message with a photo")
+            await self._status_logger("Recived one message with a photo")
             self._one_photo_recieved = True
 
         if self._one_photo_recieved and self._one_track_recieved:
-            self._status_logger("Recieved the track and the photo. Disconnecting...")
+            await self._status_logger("Recieved the track and the photo. Disconnecting...")
             self._last_download_status = self.DownloadStatus.SUCCESS
-            self._status_logger("Dettaching track download handler...")
+            await self._status_logger("Dettaching track download handler...")
             self.client.remove_event_handler(
                 self._track_download_handler
             )
@@ -819,37 +819,37 @@ class SpotDaemon:
     async def _playlist_download_handler (self, event):
         await event.mark_read()
         if event.message.message == "Invalid link ;)":
-            self._status_logger("Link was Invalid. Disconnecting...")
+            await self._status_logger("Link was Invalid. Disconnecting...")
             self._last_download_status = self.DownloadStatus.FAILURE
             self.handler_event.set()
 
         if event.buttons:
             if self._clicked_button:
-                self._status_logger("Got another message with buttons.", self.Status.WARN)
+                await self._status_logger("Got another message with buttons.", self.Status.WARN)
                 if event.message.message == "Downloading…":
-                    self._status_logger("Its the Downloading message")
+                    await self._status_logger("Its the Downloading message")
                 else:
-                    self._status_logger("Its not the Downloading message", self.Status.WARN)
+                    await self._status_logger("Its not the Downloading message", self.Status.WARN)
                 return
 
             if event.buttons[0][0].text == "GET ALL ⬇️":
-                self._status_logger("Clicking GET ALL button")
+                await self._status_logger("Clicking GET ALL button")
                 self._clicked_button = True
                 await event.buttons[0][0].click()
         elif event.audio:
-            self._add_to_info_list(event)
+            await self._add_to_info_list(event)
             self._last_playlist_download_count += 1
         elif event.message.message == "Finished.":
-            self._status_logger("Downloaded all the tracks. Disconnecting...")
+            await self._status_logger("Downloaded all the tracks. Disconnecting...")
             self._last_download_status = self.DownloadStatus.SUCCESS
-            self._status_logger("Dettaching playlist download handler...")
+            await self._status_logger("Dettaching playlist download handler...")
             self.client.remove_event_handler(
                 self._playlist_download_handler
             )
             # print(self._last_playlist_download_count)
             self.handler_event.set()
         else:
-            self._status_logger("Recieved some other message", self.Status.WARN)
+            await self._status_logger("Recieved some other message", self.Status.WARN)
             print(event.message.message)
 
         return
@@ -893,21 +893,21 @@ class SpotDaemon:
 
                 self._data_lock.release()
 
-                self._status_logger("Sending the url to deezload2bot")
+                await self._status_logger("Sending the url to deezload2bot")
                 await self.client.send_message(
                     "deezload2bot", url
                 )
 
                 # TODO: we probably don't need the .value
                 if url_type == self.UrlType.TRACK.value:
-                    self._status_logger("Attaching track download handler...")
+                    await self._status_logger("Attaching track download handler...")
                     self.client.add_event_handler(
                         self._track_download_handler,
                         events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
                     )
                     self._one_track_recieved = False
                 elif url_type == self.UrlType.ALBUM.value:
-                    self._status_logger("Attaching album download handler...")
+                    await self._status_logger("Attaching album download handler...")
                     self.client.add_event_handler(
                         self._album_download_handler,
                         events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
@@ -918,7 +918,7 @@ class SpotDaemon:
                     self._last_album_download_count = 0
                     self._clicked_button = False
                 elif url_type == self.UrlType.PLAYLIST.value:
-                    self._status_logger("Attaching playlist download handler...")
+                    await self._status_logger("Attaching playlist download handler...")
                     self.client.add_event_handler(
                         self._playlist_download_handler,
                         events.NewMessage(chats = [ 'deezload2bot' ], incoming = True)
@@ -934,7 +934,7 @@ class SpotDaemon:
                 self._one_photo_recieved = False
                 self._download_list = []
 
-                self._status_logger("Waiting for the reply from deezload2bot...")
+                await self._status_logger("Waiting for the reply from deezload2bot...")
                 # the handler should set this event
                 self.handler_event.clear()
                 await self.handler_event.wait()
@@ -942,37 +942,37 @@ class SpotDaemon:
                 # after
 
                 if self._last_download_status == self.DownloadStatus.SUCCESS:
-                    self._status_logger("Succeded downloading the file(s)")
+                    await self._status_logger("Succeded downloading the file(s)")
                     # TODO: do we really need to do this right now ?
                     self._curate_files()
                 elif self._last_download_status == self.DownloadStatus.FAILURE:
                     # dettaching the handlers incase we failed
                     # TODO: move this from here to handlers, maybe ?
                     if url_type == self.UrlType.TRACK.value:
-                        self._status_logger("Dettaching track download handler...")
+                        await self._status_logger("Dettaching track download handler...")
                         self.client.remove_event_handler(
                             self._track_download_handler
                         )
                     elif url_type == self.UrlType.ALBUM.value:
-                        self._status_logger("Dettaching album download handler...")
+                        await self._status_logger("Dettaching album download handler...")
                         self.client.remove_event_handler(
                             self._album_download_handler
                         )
                     elif url_type == self.UrlType.PLAYLIST.value:
-                        self._status_logger("Dettaching playlist download handler...")
+                        await self._status_logger("Dettaching playlist download handler...")
                         self.client.remove_event_handler(
                             self._playlist_download_handler
                         )
-                    self._status_logger(
+                    await self._status_logger(
                         "Failed downloading the file(s)", self.Status.WARN
                     )
                 else:
                     # TODO: adflk
-                    self._status_logger(
+                    await self._status_logger(
                         "_last_download_status should have been either Success or Failed",
                         self.Status.WARN
                     )
-                    self._status_logger(
+                    await self._status_logger(
                         "Current value: " + self._last_download_status.name,
                         self.Status.WARN
                     )
@@ -1794,9 +1794,9 @@ def attach_lrc ():
 parse_config()
 
 # sq = SpotQuery("taylor swift songs")
-sdl = SpotClient(Config_Dir + "/anon", Api_Id, Api_Hash)
+# sdl = SpotClient(Config_Dir + "/anon", Api_Id, Api_Hash)
 
-print(sdl.connect())
+# print(sdl.connect())
 
 ### if len(sys.argv) == 2 and (sys.argv[1] == "--lrc" or sys.argv[1] == "-l"):
 ###     attach_lrc()
