@@ -1104,14 +1104,24 @@ class SpotDaemon:
 
             self._daemon_logger("\nNew Connection\n")
 
-            # OK connection
-            self._daemon_logger("Now accepting for OK msg")
+            # ilomilo connection
+            self._daemon_logger("Now accepting for ilomilo connection")
             client, addr = server.accept()
 
-            self._daemon_logger("Client connected, sending 'OK'")
-            client.send("OK".encode())
+            self._daemon_logger("Client connected, sending 'ILO'")
+            client.send("ILO".encode())
 
-            self._daemon_logger("Now waiting for the client to disconnect...")
+            self._daemon_logger("Now waiting for 'MILO'")
+
+            msg = client.recv(4)
+
+            if msg.decode() != "MILO":
+                self._daemon_logger(
+                    "\"The world's a little blurry, or maybe it's my eyes.\""
+                )
+                continue
+
+            self._daemon_logger("Got the 'MILO', now waiting for the client to disconnect")
             # client should disconnect this connection
             msg = client.recv(1)
             if msg != b'':
@@ -1212,20 +1222,22 @@ class SpotClient:
         else:
             return connection
 
-    def _check_ok_connection (self):
-        # OK connection
-        okconn = self._est_daemon_connection()
+    def _ilomilo_connection (self):
 
-        if okconn is None:
+        ilomilo = self._est_daemon_connection()
+
+        if ilomilo is None:
             return False
         else:
-            okmsg = okconn.recv(2)
-            if okmsg.decode() == "OK":
-                Logger("Got the OK, now disconnecting")
-                okconn.shutdown(socket.SHUT_RDWR)
-                okconn.close()
+            msg = ilomilo.recv(3)
+            if msg.decode() == "ILO":
+                Logger("Got the 'ILO', now sending 'MILO'")
+                ilomilo.send("MILO".encode())
+                Logger("Now disconnecting")
+                ilomilo.shutdown(socket.SHUT_RDWR)
+                ilomilo.close()
             else:
-                Logger("Got something else: \"" + okmsg.decode() + "\"", "WARN")
+                Logger("Got something else: \"" + msg.decode() + "\"", "WARN")
                 return False
 
         return True
@@ -1267,8 +1279,8 @@ class SpotClient:
 
         if process_name == "sdl":
             Logger("The daemon is running.")
-            Logger("Proceeding for an OK connection")
-            return self._check_ok_connection()
+            Logger("Proceeding for an ilomilo connection")
+            return self._ilomilo_connection()
         else:
             Logger(
                 "It's seems like it is different process\n"
@@ -1307,7 +1319,7 @@ class SpotClient:
         Logger("sleeping for 10 ms, waiting for the daemon to start")
         time.sleep(0.01)
 
-        return self._check_ok_connection()
+        return self._ilomilo_connection()
 
     # this is useless
     def _connect_to_daemon (self):
