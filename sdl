@@ -578,8 +578,12 @@ class SpotDaemon:
         ])
 
         try:
+            await self._loop.run_in_executor(
+                self._pool, self._ack_lock.acquire
+            )
             self._status_lock.acquire()
             self._status_socket.send(header + payload)
+
         except Exception as e:
             # self._status_logger_file_fd.write(e.args[0])
             # self._status_logger_file_fd.flush()
@@ -587,9 +591,28 @@ class SpotDaemon:
                 self._pool, self._data_lock.acquire
             )
             self._status_pending.append(status)
+        else:
+            # the client to send an 'ACK' after receving every status
+            # the client should only send 'ACK' after syncing the data
+            # if, the status updaate was related to the mutation of the
+            # data.
+            ack = self._status_socket.recv(3)
+            if ack.decode() == "ACK":
+                self._status_logger_file_fd.write(
+                    self.Status.WARN.name ": " + str(cur_time) + ": " + "Got the 'ACK'" + "\n"
+                )
+            else:
+                self._status_logger_file_fd.write(
+                    self.Status.WARN.name ": " + str(cur_time) + ": " + "Didn't recieve 'ACK'" + "\n"
+                )
+            self._status_logger_file_fd.flush()
+
         finally:
+            if self._ack_lock.locked():
+                self._ack_lock.release()
             if self._status_lock.locked():
                 self._status_lock.release()
+            # TODO: _data_lock is the only lock that may or may not be locked
             if self._data_lock.locked():
                 self._data_lock.release()
 
@@ -1794,9 +1817,9 @@ def attach_lrc ():
 parse_config()
 
 # sq = SpotQuery("taylor swift songs")
-# sdl = SpotClient(Config_Dir + "/anon", Api_Id, Api_Hash)
+sdl = SpotClient(Config_Dir + "/anon", Api_Id, Api_Hash)
 
-# print(sdl.connect())
+print(sdl.connect())
 
 ### if len(sys.argv) == 2 and (sys.argv[1] == "--lrc" or sys.argv[1] == "-l"):
 ###     attach_lrc()
