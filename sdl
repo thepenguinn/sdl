@@ -486,9 +486,15 @@ class SpotDaemon:
         self._daemon_logger_file_fd = None
 
         # TESTING #
+        # _data_lock will take care of the synchronization of data structures
         self.query_list = []
         self.info_list = []
         self.download_list = []
+
+        # For syncing with the client, as long as this lock is locked
+        # the daemon shouldn't modify the above data structures.
+        self._ack_lock = None
+
         self.stop_download = False
 
         return
@@ -1116,8 +1122,10 @@ class SpotDaemon:
         server = self._daemon_server_init(self._port, self._backlog)
         self._daemon_logger("Succesfully initialized the server")
 
+        # TODO: maybe move this to _init()
         self._status_lock = threading.Lock()
         self._data_lock = threading.Lock()
+        self._ack_lock = threading.Lock()
 
         download_thread = None
 
@@ -1224,8 +1232,10 @@ class SpotClient:
         self._daemon_is_connected = False
 
         # TESTING #
+        # _data_lock will take care of the synchronization of data structures
         self.query_list = []
         self.info_list = []
+        self.download_list = []
 
         return
 
