@@ -431,7 +431,7 @@ class Track ():
 
 class MovableList (List):
 
-    def move (self, start:int, end:int, to:int) -> None:
+    def move (self, start:int, end:int, offset:int) -> None:
 
         if start < 0 or start > len(self) - 1:
             raise IndexError("start should be between 0 and len - 1")
@@ -439,20 +439,20 @@ class MovableList (List):
         if end < 0 or end > len(self) - 1:
             raise IndexError("end should be between 0 and len - 1")
 
-        if to < 0 or to > len(self):
-            raise IndexError("to should be between 0 and len")
+        if offset < 0 or offset > len(self):
+            raise IndexError("offset should be between 0 and len")
 
         if end < start:
             raise IndexError("start should be equal or less than end")
 
-        if to > start:
-            self._move_up(start, end, to)
+        if offset > start:
+            self._move_up(start, end, offset)
         else:
-            self._move_down(start, end, to)
+            self._move_down(start, end, offset)
 
         return
 
-    def _move_up (self, start:int, end:int, to:int) -> None:
+    def _move_up (self, start:int, end:int, offset:int) -> None:
 
         # TODO: there's a better way
 
@@ -462,10 +462,7 @@ class MovableList (List):
         range_end:int
         delta:int
 
-        if to <= end:
-            range_end = end + (to - start) + 1
-        else:
-            range_end = to
+        range_end = end + (offset - start) + 1
 
         if range_end > len(self):
             delta = range_end - len(self)
@@ -476,10 +473,7 @@ class MovableList (List):
         for i in range(range_start, range_end, 1):
             self[i - mblen] = self[i]
 
-        if to <= end:
-            range_start = to
-        else:
-            range_start = to - mblen
+        range_start = offset
 
         if range_start + mblen > len(self):
             delta = range_start + mblen - len(self)
@@ -492,7 +486,7 @@ class MovableList (List):
 
         return
 
-    def _move_down (self, start:int, end:int, to:int) -> None:
+    def _move_down (self, start:int, end:int, offset:int) -> None:
 
         mblock:List[Any] = self[start:end + 1]
         mblen:int = len(mblock)
@@ -500,13 +494,13 @@ class MovableList (List):
         range_end:int
 
         range_start = start - 1
-        range_end = to - 1
+        range_end = offset - 1
 
         for i in range(range_start, range_end, -1):
             self[i + mblen] = self[i]
 
-        range_start = to
-        range_end = to + mblen
+        range_start = offset
+        range_end = offset + mblen
 
         for i in range(range_start, range_end, 1):
             self[i] = mblock[i - range_start]
