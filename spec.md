@@ -682,8 +682,6 @@ This thread will be the one
 
 ### Data
 
-- U
-
 ## Daemon Architecture
 
 The Daemon will have tow threads. The threads will be:
@@ -699,20 +697,25 @@ The Daemon will have tow threads. The threads will be:
 ### Data
 
 - QueryTree: Long living
-- QueryList: Not long living
+- QueryQueue: Not long living
 - DownloadTree: Long living # this is the info_list
-- DownloadList: Not long living
+- DownloadQueue: Not long living
 
 #### Note
 
-Long living: Nothing will be removed from the object, once been added.
-Not long living: The list will act as a queue, the 0th item will be popped off after use.
+Long living: Nothing will be removed from the object, once been added. Not long
+living: The list will act as a queue, the 0th item will be popped off after
+use.
 
-QueryTree and DownloadTree are basically python List
-QueryList and DownloadList are MovableList
+QueryTree and DownloadTree are basically python List QueryQueue and
+DownloadQueue are MovableList. Basically they will act like a queue, you usally
+append something at the end and the Dowload Task and Query Task will pop things
+from the 0th index.
 
-MovableList: They are basically List with the a method to move a block inside the list.
-Can move a block up and down with the move method.
+MovableList: They are basically List with the a method to move a block inside
+the list. Can move a block up and down with the move method.
+
+### Quelk
 
 ```python
 class MovableList (List):
@@ -761,4 +764,29 @@ class MovableList (List):
 
         '''
         return
+```
+
+```python
+class QueryRespone ():
+    pass
+```
+
+```python
+class QueryTree (MovableList):
+    """
+    QueryTree is just a list of Queries.
+    """
+
+    query = {
+        query_time:str,
+        query:str,
+        responses: = [
+            {
+                url:str,
+                url_type:str,
+                title:str
+            },
+        ]
+        selected:int
+    }
 ```

@@ -8,26 +8,9 @@ categories: [
     spec
 ]
 created: 2024-06-30T15:16:04+0530
-updated: 2024-06-30T15:36:34+0530
+updated: 2024-06-30T15:44:54+0530
 version: 1.1.1
 @end
-
-* Client Architecture
-
-   The client will have two threads (minimum of two if we are not doing any kind
-   of fancy animations). The threads will be:
-
-   - Input Thread
-   - Status Thread
-
-** Input Thread
-
-    This thread will be the one
-
-
-** Status Thread
-
-** Data
 
 * Daemon Architecture
 
@@ -148,6 +131,23 @@ version: 1.1.1
                     "title":str = "title"
                 },
             ],
-            "selected":int = 3
+            "selected":int = 3 # the index of selected query
         }
     @end
+
+* Client Architecture
+
+   The client will have two threads (minimum of two if we are not doing any kind
+   of fancy animations). The threads will be:
+
+   - Input Thread
+   - Status Thread
+
+** Input Thread
+
+    This thread will be the one
+
+
+** Status Thread
+
+** Data
