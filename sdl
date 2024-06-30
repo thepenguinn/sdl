@@ -227,7 +227,7 @@ class SpotDownload:
 
         file_name = ""
         for i in msg.file.name:
-            if i == "\"" or i == ":" or i == "?":
+            if i == "\"" or i == ":" or i == "?" or i == "/":
                 file_name = file_name + " "
             else:
                 file_name = file_name + i
