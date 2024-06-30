@@ -1,0 +1,143 @@
+@document.meta
+title: spec
+description: Specification for sdl
+authors: [
+    Daniel
+]
+categories: [
+    spec
+]
+created: 2024-06-30T15:16:04+0530
+updated: 2024-06-30T15:20:02+0530
+version: 1.1.1
+@end
+
+* Client and Daemon Architecture
+
+  The Client and Daemon will be
+
+** Client Architecture
+
+   The client will have two threads (minimum of two if we are not doing any kind
+   of fancy animations). The threads will be:
+
+   - Input Thread
+   - Status Thread
+
+*** Input Thread
+
+    This thread will be the one
+
+
+*** Status Thread
+
+*** Data
+
+** Daemon Architecture
+
+   The Daemon will have tow threads. The threads will be:
+
+   - Download Thread
+   - Command Thread
+
+*** Download Thread
+
+*** Command Thread
+
+*** Data
+
+    - QueryTree: Long living
+    - QueryQueue: Not long living
+    - DownloadTree: Long living * this is the info_list
+    - DownloadQueue: Not long living
+
+**** Note
+
+     Long living: Nothing will be removed from the object, once been added. Not long
+     living: The list will act as a queue, the 0th item will be popped off after
+     use.
+
+     QueryTree and DownloadTree are basically python List QueryQueue and
+     DownloadQueue are MovableList. Basically they will act like a queue, you usally
+     append something at the end and the Dowload Task and Query Task will pop things
+     from the 0th index.
+
+     MovableList: They are basically List with the a method to move a block inside
+     the list. Can move a block up and down with the move method.
+
+
+*** Quelk
+
+    @code python
+    class MovableList (List):
+        def move (start:int, end:int, offset:int) -> None:
+        '''
+        start:int  -> start of the block that wants to be moved.
+        end:int    -> end of the block that wants to be moved, inclusive.
+        offset:int -> offset from the start, the block will be moved to that offset, with
+                      start at that point.
+
+        +---+---+---+---+---+--- offset
+        0   1   2   3   4   5
+        v   v   v   v   v   v
+        +---+---+---+---+---+
+        | 2 | 3 | 6 | 9 | 3 |
+        +---+---+---+---+---+
+          ^   ^   ^   ^   ^
+          0   1   2   3   4
+          +---+---+---+---+----- index
+
+        move(0, 1, 4) will cause:
+
+        +---+---+---+---+---+--- offset
+        0   1   2   3   4   5
+        v   v   v   v   v   v
+        +---+---+---+---+---+
+        | 6 | 9 | 2 | 3 | 3 |
+        +---+---+---+---+---+
+          ^   ^   ^   ^   ^
+          0   1   2   3   4
+          +---+---+---+---+----- index
+
+        move(3, 3, 0) will cause:
+
+        +---+---+---+---+---+--- offset
+        0   1   2   3   4   5
+        v   v   v   v   v   v
+        +---+---+---+---+---+
+        | 3 | 6 | 9 | 2 | 3 |
+        +---+---+---+---+---+
+          ^   ^   ^   ^   ^
+          0   1   2   3   4
+          +---+---+---+---+----- index
+
+        if start, end, offset has any other values than above, will raise an IndexError
+
+        '''
+        return
+    @code
+
+    @code python
+    class QueryRespone ():
+        pass
+    @end
+
+    @code python
+    class QueryTree (MovableList):
+        """
+        QueryTree is just a list of Queries.
+        """
+
+    query = {
+        "query_time":str,
+        "query":str,
+            "responses":List[Any] = [
+            {
+                "url":str,
+                "url_type":str,
+                "title":str
+            },
+        ]
+                "selected":int
+    }
+    @end
