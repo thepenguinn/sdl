@@ -432,6 +432,49 @@ class Track ():
 class MovableList (List):
 
     def move (self, start:int, end:int, offset:int) -> None:
+        '''
+        start:int  -> start of the block that wants to be moved.
+        end:int    -> end of the block that wants to be moved, inclusive.
+        offset:int -> offset from the start, the block will be moved to that offset, with
+                      start at that point.
+
+        +---+---+---+---+---+--- offset
+        0   1   2   3   4   5
+        v   v   v   v   v   v
+        +---+---+---+---+---+
+        | 2 | 3 | 6 | 9 | 3 |
+        +---+---+---+---+---+
+          ^   ^   ^   ^   ^
+          0   1   2   3   4
+          +---+---+---+---+----- index
+
+        move(0, 1, 4) will cause:
+
+        +---+---+---+---+---+--- offset
+        0   1   2   3   4   5
+        v   v   v   v   v   v
+        +---+---+---+---+---+
+        | 6 | 9 | 2 | 3 | 3 |
+        +---+---+---+---+---+
+          ^   ^   ^   ^   ^
+          0   1   2   3   4
+          +---+---+---+---+----- index
+
+        move(3, 3, 0) will cause:
+
+        +---+---+---+---+---+--- offset
+        0   1   2   3   4   5
+        v   v   v   v   v   v
+        +---+---+---+---+---+
+        | 3 | 6 | 9 | 2 | 3 |
+        +---+---+---+---+---+
+          ^   ^   ^   ^   ^
+          0   1   2   3   4
+          +---+---+---+---+----- index
+
+        if start, end, offset has any other values than above, will raise an IndexError
+
+        '''
 
         if start < 0 or start > len(self) - 1:
             raise IndexError("start should be between 0 and len - 1")
