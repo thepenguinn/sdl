@@ -6,6 +6,7 @@ from pyfzf.pyfzf import FzfPrompt
 from concurrent.futures import ThreadPoolExecutor
 from mutagen.id3 import ID3, USLT, TPE1
 from bs4 import BeautifulSoup
+from typing import List, Any
 from pprint import pprint
 from enum import Enum
 
@@ -401,6 +402,199 @@ class SpotQuery:
             result = self.selected_query_result
         return result["title"]
 
+class Track ():
+
+    def __init__ (
+        self,
+        file_name:str,
+        file_id:str,
+        artist_name:str,
+        track_name:str,
+        album_name:str,
+        total_bytes:int,
+        duration:int,
+        downloaded_bytes:int = 0,
+        discarded:bool = False
+        ) -> None:
+
+        self.file_name = file_name
+        self.file_id = file_id
+        self.artist_name = artist_name
+        self.track_name = track_name
+        self.album_name = album_name
+        self.downloaded_bytes = downloaded_bytes
+        self.total_bytes = total_bytes
+        self.duration = duration
+        self.discarded = discarded
+
+        return
+
+class MovableList (List):
+
+    def move (self, start:int, end:int, to:int) -> None:
+
+        if start < 0 or start > len(self) - 1:
+            raise IndexError("start should be between 0 and len - 1")
+
+        if end < 0 or end > len(self) - 1:
+            raise IndexError("end should be between 0 and len - 1")
+
+        if to < 0 or to > len(self):
+            raise IndexError("to should be between 0 and len")
+
+        if end < start:
+            raise IndexError("start should be equal or less than end")
+
+        if to > start:
+            self._move_up(start, end, to)
+        else:
+            self._move_down(start, end, to)
+
+        return
+
+    def _move_up (self, start:int, end:int, to:int) -> None:
+
+        # TODO: there's a better way
+
+        mblock:List[Any] = self[start:end + 1]
+        mblen:int = len(mblock)
+        range_start:int
+        range_end:int
+        delta:int
+
+        if to <= end:
+            range_end = end + (to - start) + 1
+        else:
+            range_end = to
+
+        if range_end > len(self):
+            delta = range_end - len(self)
+            range_end = range_end - delta
+
+        range_start = end + 1
+
+        for i in range(range_start, range_end, 1):
+            self[i - mblen] = self[i]
+
+        if to <= end:
+            range_start = to
+        else:
+            range_start = to - mblen
+
+        if range_start + mblen > len(self):
+            delta = range_start + mblen - len(self)
+            range_start = range_start - delta
+
+        range_end = range_start + mblen
+
+        for i in range(range_start, range_end, 1):
+            self[i] = mblock[i - range_start]
+
+        return
+
+    def _move_down (self, start:int, end:int, to:int) -> None:
+
+        mblock:List[Any] = self[start:end + 1]
+        mblen:int = len(mblock)
+        range_start:int
+        range_end:int
+
+        range_start = start - 1
+        range_end = to - 1
+
+        for i in range(range_start, range_end, -1):
+            self[i + mblen] = self[i]
+
+        range_start = to
+        range_end = to + mblen
+
+        for i in range(range_start, range_end, 1):
+            self[i] = mblock[i - range_start]
+
+        return
+
+
+class TrackList (MovableList):
+
+    def __init__ (self, tracks:List[Track] = None) -> None:
+
+        if tracks is not None:
+            for track in tracks:
+                self.append(track)
+        return
+
+    def append (self, track:Track) -> None:
+
+        if type(track) != Track:
+            raise TypeError("Expected " + str(type(Track)) + " but got " + str(type(track)))
+
+        super(TrackList, self).append(track)
+
+        return
+
+class Info ():
+
+    def __init__ (
+        self,
+        url_type:str,
+        tracks:TrackList,
+        discarded:bool = False
+        ) -> None:
+
+        self.url_type = url_type
+        self.tracks = tracks
+        self.discarded = discarded
+
+        return
+
+# this list is long living, ie, we won't be popping of anything from this
+# list once it's been added
+class InfoTree (MovableList):
+
+    def __init__ (self, infos:List[Info] = None) -> None:
+
+        if infos is not None:
+            for info in infos:
+                self.append(info)
+
+        return
+
+    def append (self, info:Info) -> None:
+
+        if type(info) != Info:
+            raise TypeError("Expected " + str(type(Info)) + " but got " + str(type(info)))
+
+        super(InfoTree, self).append(info)
+
+        return
+
+
+# this list is long living, ie, we won't be popping of anything from this
+# list once it's been added
+class DownloadTree (List):
+    pass
+
+
+class DownloadList (MovableList):
+
+    def __init__ (self, tracks:List[Track] = None) -> None:
+
+        if tracks is not None:
+            for track in tracks:
+                self.append(track)
+
+    def append (self, track:Track) -> None:
+
+        if type(track) != Track:
+            raise TypeError("Expected " + str(type(Track)) + " but got " + str(type(track)))
+
+        super(DownloadList, self).append(track)
+
+        return
+
+
+
+
 class SpotDaemon:
 
     client = None
@@ -414,6 +608,9 @@ class SpotDaemon:
             "PROGRESS",
             "FAILED",
             "SUCCESS",
+            "APPEND_INFO_LIST",
+            "APPEND_DOWLOAD_LIST",
+            "APPEND_QUERY_LIST",
         ]
     )
 
@@ -575,7 +772,7 @@ class SpotDaemon:
             "message": message
         }
 
-        payload = json.dumps(status).encode()
+        payload = json.dumps(status, default = lambda x: None).encode()
 
         size = len(payload)
 
@@ -732,7 +929,6 @@ class SpotDaemon:
         await self._loop.run_in_executor(
             self._pool, self._data_lock.acquire
         )
-        # we will just append the track to the last element of info list
 
         idx = len(self.info_list) - 1
         if idx < 0:
@@ -743,6 +939,10 @@ class SpotDaemon:
             return
 
         self.info_list[idx]["tracks"].append(track)
+        await self._status_logger(track, self.Status.APPEND_INFO_LIST)
+
+        self.download_list.append(track)
+        await self._status_logger(track, self.Status.APPEND_DOWLOAD_LIST)
 
         self._data_lock.release()
 
