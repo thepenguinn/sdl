@@ -431,8 +431,16 @@ class Track ():
 
 class MovableList (List):
 
+    def __init__ (self, values:List[Any] = None) -> None:
+
+        if values is not None:
+            for value in values:
+                self.append(value)
+
+        return
+
     def move (self, start:int, end:int, offset:int) -> None:
-        '''
+        """
         start:int  -> start of the block that wants to be moved.
         end:int    -> end of the block that wants to be moved, inclusive.
         offset:int -> offset from the start, the block will be moved to that offset, with
@@ -474,7 +482,7 @@ class MovableList (List):
 
         if start, end, offset has any other values than above, will raise an IndexError
 
-        '''
+        """
 
         if start < 0 or start > len(self) - 1:
             raise IndexError("start should be between 0 and len - 1")
@@ -612,7 +620,7 @@ class DownloadTree (List):
     pass
 
 
-class DownloadList (MovableList):
+class DownloadQueue (MovableList):
 
     def __init__ (self, tracks:List[Track] = None) -> None:
 
@@ -625,7 +633,7 @@ class DownloadList (MovableList):
         if type(track) != Track:
             raise TypeError("Expected " + str(type(Track)) + " but got " + str(type(track)))
 
-        super(DownloadList, self).append(track)
+        super(DownloadQueue, self).append(track)
 
         return
 
