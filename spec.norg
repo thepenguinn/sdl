@@ -8,7 +8,7 @@ categories: [
     spec
 ]
 created: 2024-06-30T15:16:04+0530
-updated: 2024-06-30T15:44:54+0530
+updated: 2024-07-02T04:56:01+0530
 version: 1.1.1
 @end
 
@@ -135,6 +135,59 @@ version: 1.1.1
         }
     @end
 
+*** Track
+
+    @code python
+    class Track ():
+
+        track = {
+            "file_name":str = "file of the song",
+            "file_id":str = "the unique id of a file",
+            "artist_name":str = "artist_name",
+            "track_name":str = "track_name",
+            "album_name":str = "album_name",
+            "total_bytes":int = "size of the file in bytes",
+            "duration":int = "the duration of the song in seconds",
+            "downloaded_bytes":int = "size of the downloaded file in bytes",
+            "discarded":bool = "whether the download of the track is discarded or not"
+        }
+
+    @end
+
+*** TrackList
+
+    @code python
+    class TrackList (MovableList): # why not ?
+        """
+        Its just a list of Tracks
+        """
+    @end
+
+*** Info
+
+    @code python
+    class Info ():
+
+        info = {
+            "url_type":str = "type of url",
+            "tracks":TrackList = "List of Tracks",
+            "discarded":bool = "Whether the tracks of this info is discarded or not"
+        }
+
+    @end
+
+
+*** DownloadTree
+
+    @code python
+    class DownloadTree (MovableList):
+
+        downloadedTree
+
+
+    @end
+
+
 * Client Architecture
 
    The client will have two threads (minimum of two if we are not doing any kind
@@ -151,3 +204,58 @@ version: 1.1.1
 ** Status Thread
 
 ** Data
+
+*** User Input
+
+*** Link
+
+    @code python
+    class Link ():
+
+        link = {
+            "url":str = "the spotify url",
+            "type":LinkType = "track, album, playlist",
+            "title":str = "title string from the google search"
+        }
+
+    @end
+
+*** LinkType
+
+    @code python
+    class LinkType (Enum):
+        PLAYLIST = 1
+        ALBUM    = 2
+        TRACK    = 3
+    @end
+
+*** LinkList
+
+    @code python
+    class LinkList (List):
+        """
+        just a list of Link
+        """
+        pass
+    @end
+
+*** Response
+
+    @code python
+    class Response (List):
+
+        response = {
+            "query_time":str = "unix time in seconds at the time of the request",
+            "link_list":LinkList = "list of gathered links",
+            "last_selected":int = "index of the last selected link"
+        }
+    @end
+
+*** ResponseTree
+
+    @code python
+    class ResponseTree (List):
+        """
+        just a list of Response
+        """
+    @end
