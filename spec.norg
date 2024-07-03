@@ -8,49 +8,22 @@ categories: [
     spec
 ]
 created: 2024-06-30T15:16:04+0530
-updated: 2024-07-02T04:56:01+0530
+updated: 2024-07-03T11:48:23+0530
 version: 1.1.1
 @end
 
 * Daemon Architecture
 
-   The Daemon will have tow threads. The threads will be:
+  The Daemon will have two threads. The threads will be:
 
-   - Download Thread
-   - Command Thread
+  - Download Thread
+  - Command Thread
 
 ** Download Thread
 
 ** Command Thread
 
 ** Data
-
-    - QueryTree: Long living
-    - QueryQueue: Not long living
-    - DownloadTree: Long living
-    - DownloadQueue: Not long living
-
-*** Note
-
-**** Long living
-
-     Nothing will be removed from the object, once been added.
-
-**** Not long living
-
-     The list will act as a queue, the 0th item will be popped off after use.
-
-**** Trees
-
-     QueryTree and DownloadTree are basically python List. And they might have
-     other lists, that's why they are called trees.
-
-**** Queue
-
-     QueryQueue and DownloadQueue are MovableList. Basically they will act like
-     a queue, you usally append something at the end and the Dowload Task and
-     Query Task will pop things from the 0th index.
-
 
 *** MovableList
 
@@ -106,33 +79,35 @@ version: 1.1.1
             return
     @end
 
-*** QueryRespone
+
+*** Query
 
     @code python
-    class QueryRespone ():
-        pass
+    class Query ():
+        query = {
+            "request_time":str = "unix time in seconds at the time of request of this url",
+            "url":str = "the spotify url",
+            "type":LinkType = "track, album, playlist",
+        }
     @end
 
-*** QueryTree
+*** QueryList
 
     @code python
-    class QueryTree (MovableList):
+    class QueryList (List):
         """
-        QueryTree is just a list of Queries.
+        just a list of Query
         """
+    @end
 
-        query = {
-            "query_time":str = "the unix time when the query request made",
-            "query":str = "query string that user typed",
-            "responses":List[Any] = [
-                {
-                    "url":str = "url",
-                    "url_type":str = "url_type",
-                    "title":str = "title"
-                },
-            ],
-            "selected":int = 3 # the index of selected query
-        }
+*** QueryQueue
+
+    @code python
+    class QueryQueue (MovableList):
+        """
+        just a Queue of Query, the query task will pop off from 0th index and
+        fills the info
+        """
     @end
 
 *** Track
@@ -157,7 +132,7 @@ version: 1.1.1
 *** TrackList
 
     @code python
-    class TrackList (MovableList): # why not ?
+    class TrackList (List):
         """
         Its just a list of Tracks
         """
@@ -169,43 +144,68 @@ version: 1.1.1
     class Info ():
 
         info = {
-            "url_type":str = "type of url",
+            "url_type":LinkType = "type of url",
             "tracks":TrackList = "List of Tracks",
             "discarded":bool = "Whether the tracks of this info is discarded or not"
         }
 
     @end
 
-
-*** DownloadTree
+*** InfoTree
 
     @code python
-    class DownloadTree (MovableList):
-
-        downloadedTree
-
-
+    class InfoTree (List):
+        """
+        just a list of Info
+        """
     @end
 
+*** DownloadQueue
+
+    @code python
+    class DownloadQueue (MovableList):
+        """
+        just a Queue of Track, the dowload task will pop off from 0th index and
+        downloads the files
+        """
+    @end
 
 * Client Architecture
 
-   The client will have two threads (minimum of two if we are not doing any kind
-   of fancy animations). The threads will be:
+  The client will have three threads (minimum of three if we are not doing any kind
+  of fancy animations). The threads will be:
 
-   - Input Thread
-   - Status Thread
+  - Input Thread
+  - Request Thread
+  - Status Thread
 
 ** Input Thread
 
-    This thread will be the one
+   This thread will be the one to recive the user's input.
 
+** Request Thread
+
+   This will be the thread that requests the for the search queries
 
 ** Status Thread
 
+   This thread recieves the status from the daemon and updates the data
+   structures.
+
 ** Data
 
+   The client will have the exact same data structures as the daemon, with
+   some extra few. They are specified below.
+
 *** User Input
+
+    The user could give a url or an query string to download the tracks. If the
+    user gives a url, some way, the url info is forwarded to the daemon, and
+    the request thread fetches the info about the url and updates the InfoList.
+
+    If the input is a query is string, the string is used to query for the urls.
+    Then the gathered urls are presented to the user for the selection. Then the
+    user selection will be forwarded to the daemon.
 
 *** Link
 
@@ -234,7 +234,7 @@ version: 1.1.1
     @code python
     class LinkList (List):
         """
-        just a list of Link
+        list of Link
         """
         pass
     @end
@@ -242,10 +242,10 @@ version: 1.1.1
 *** Response
 
     @code python
-    class Response (List):
+    class Response ():
 
         response = {
-            "query_time":str = "unix time in seconds at the time of the request",
+            "request_time":str = "unix time in seconds at the time of the request",
             "link_list":LinkList = "list of gathered links",
             "last_selected":int = "index of the last selected link"
         }
