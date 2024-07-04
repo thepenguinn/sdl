@@ -10,6 +10,10 @@ from typing import List, Any
 from pprint import pprint
 from enum import Enum
 
+from threading import Lock as ThreadLock
+
+from typing import Union
+
 import configparser
 import subprocess
 import threading
@@ -402,33 +406,6 @@ class SpotQuery:
             result = self.selected_query_result
         return result["title"]
 
-class Track ():
-
-    def __init__ (
-        self,
-        file_name:str,
-        file_id:str,
-        artist_name:str,
-        track_name:str,
-        album_name:str,
-        total_bytes:int,
-        duration:int,
-        downloaded_bytes:int = 0,
-        discarded:bool = False
-        ) -> None:
-
-        self.file_name = file_name
-        self.file_id = file_id
-        self.artist_name = artist_name
-        self.track_name = track_name
-        self.album_name = album_name
-        self.downloaded_bytes = downloaded_bytes
-        self.total_bytes = total_bytes
-        self.duration = duration
-        self.discarded = discarded
-
-        return
-
 class MovableList (List):
 
     def __init__ (self, values:List[Any] = None) -> None:
@@ -558,6 +535,175 @@ class MovableList (List):
 
         return
 
+# client data
+class UrlType (Enum):
+    PLAYLIST = 1
+    ALBUM    = 2
+    TRACK    = 3
+
+
+class Request ():
+
+    _re_pat: re.Pattern | None = None
+
+    def __init__ (
+        self,
+        query: str | None = None,
+        url: str | None = None,
+        utype: str | None = None
+        ) -> None:
+
+        match: re.Match | None
+        url_type: str
+
+        if Request._re_pat is None:
+            Request._re_pat = re.compile("^(https://open\.spotify\.com/(.+)/.{22})(\?)?(.*)$")
+
+        if query is not None:
+            self.query = query
+            self.url = None
+            self.utype = None
+        elif url is not None:
+            self.url = url
+            self.query = None
+
+            # TODO: maybe make utype manditory if the url is given
+            if utype is None:
+                match = self._re_pat.match(url)
+                if match is not None:
+
+                    url_type = match.groups()[1]
+
+                    if url_type == "album":
+                        self.utype = UrlType.ALBUM
+                    elif url_type == "track":
+                        self.utype = UrlType.TRACK
+                    elif url_type == "playlist":
+                        self.utype = UrlType.PLAYLIST
+                    else:
+                        # TODO: this shouldn't happen raise an Execption
+                        pass
+        else:
+            raise TypeError("Both query and url were None, either of two should be not None")
+
+        return
+
+class Link ():
+
+    def __init__ (
+        self,
+        url:str,
+        utype:UrlType,
+        title:str
+        ) -> None:
+
+        self.url = url
+        self.utype = utype
+        self.title = title
+
+        return
+
+class LinkList (List):
+
+    def __init__ (self) -> None:
+        pass
+        return
+
+    def append (self, link:Link) -> None:
+
+        super(List, self).append(link)
+
+        return
+
+class Response ():
+
+    last_selected:Union[int, None] = None
+
+    def __init__ (
+        self,
+        link_list:LinkList,
+        request_time:str
+        ) -> None:
+
+        self.link_list = link_list
+        self.request_time = request_time
+
+        return
+
+    # TODO: implement other methods or ...
+
+
+class ResponseTree (List):
+
+    def __init__ (self) -> None:
+        pass
+
+    def append (self, response:Response) -> None:
+
+        super(List, self).append(response)
+
+        return
+
+# common data
+class QueryList (List):
+
+    class Query ():
+
+        def __init__ (
+            self,
+            url:str,
+            link_list:LinkList,
+            request_time:Union[str, None] = None
+            ) -> None:
+
+            self.url = url
+            self.link_list = link_list
+            self.request_time = request_time
+
+            return
+
+    thread_lock:Union[ThreadLock, None] = None
+
+    def __init__ (
+        self,
+        queries:List[Query] = None
+        ) -> None:
+
+        pass
+
+        return
+
+   #  def new (
+   #          self) -> :
+
+
+# TODO: remove this
+class Track ():
+
+    def __init__ (
+        self,
+        file_name:str,
+        file_id:str,
+        artist_name:str,
+        track_name:str,
+        album_name:str,
+        total_bytes:int,
+        duration:int,
+        downloaded_bytes:int = 0,
+        discarded:bool = False
+        ) -> None:
+
+        self.file_name = file_name
+        self.file_id = file_id
+        self.artist_name = artist_name
+        self.track_name = track_name
+        self.album_name = album_name
+        self.downloaded_bytes = downloaded_bytes
+        self.total_bytes = total_bytes
+        self.duration = duration
+        self.discarded = discarded
+
+        return
 
 class TrackList (MovableList):
 
@@ -847,11 +993,11 @@ class SpotDaemon:
             ack = self._status_socket.recv(3)
             if ack.decode() == "ACK":
                 self._status_logger_file_fd.write(
-                    self.Status.WARN.name ": " + str(cur_time) + ": " + "Got the 'ACK'" + "\n"
+                    self.Status.WARN.name + ": " + str(cur_time) + ": " + "Got the 'ACK'" + "\n"
                 )
             else:
                 self._status_logger_file_fd.write(
-                    self.Status.WARN.name ": " + str(cur_time) + ": " + "Didn't recieve 'ACK'" + "\n"
+                    self.Status.WARN.name + ": " + str(cur_time) + ": " + "Didn't recieve 'ACK'" + "\n"
                 )
             self._status_logger_file_fd.flush()
 
@@ -2069,12 +2215,12 @@ def attach_lrc ():
     lrc = SpotLrc(Lyrics_Dir)
     lrc.get_lrc(selected)
 
-parse_config()
+# parse_config()
 
 # sq = SpotQuery("taylor swift songs")
-sdl = SpotClient(Config_Dir + "/anon", Api_Id, Api_Hash)
+# sdl = SpotClient(Config_Dir + "/anon", Api_Id, Api_Hash)
 
-print(sdl.connect())
+# print(sdl.connect())
 
 ### if len(sys.argv) == 2 and (sys.argv[1] == "--lrc" or sys.argv[1] == "-l"):
 ###     attach_lrc()
