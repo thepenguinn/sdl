@@ -1,0 +1,4 @@
+daemon.log
+status.log
+pid
+trash/*
