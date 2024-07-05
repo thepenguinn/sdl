@@ -8,7 +8,7 @@ categories: [
     spec
 ]
 created: 2024-06-30T15:16:04+0530
-updated: 2024-07-04T12:43:27+0530
+updated: 2024-07-05T15:56:26+0530
 version: 1.1.1
 @end
 
@@ -83,18 +83,18 @@ version: 1.1.1
 *** Query
 
     @code python
-    class Query ():
+    class Query (dict[str, str | LinkList | None]):
         query = {
-            "request_time":str = "unix time in seconds at the time of request of this url",
-            "url":str = "the spotify url",
-            "type":LinkType = "track, album, playlist",
+            "request_time": str = "unix time in seconds at the time of request of this url",
+            "url": str = "the spotify url",
+            "type": LinkType = "track, album, playlist",
         }
     @end
 
 *** QueryList
 
     @code python
-    class QueryList (List):
+    class QueryList (List[Query]):
         """
         just a list of Query
         """
@@ -107,7 +107,7 @@ version: 1.1.1
     `get_query_queue` method.
 
     @code python
-    class QueryQueue (MovableList):
+    class QueryQueue (MovableList[Query]):
         """
         just a Queue of Query, the query task will pop off from 0th index and
         fills the info
@@ -117,18 +117,18 @@ version: 1.1.1
 *** Track
 
     @code python
-    class Track ():
+    class Track (dict[str, str | int | bool]):
 
         track = {
-            "file_name":str = "file of the song",
-            "file_id":str = "the unique id of a file",
-            "artist_name":str = "artist_name",
-            "track_name":str = "track_name",
-            "album_name":str = "album_name",
-            "total_bytes":int = "size of the file in bytes",
-            "duration":int = "the duration of the song in seconds",
-            "downloaded_bytes":int = "size of the downloaded file in bytes",
-            "discarded":bool = "whether the download of the track is discarded or not"
+            "file_name": str = "file of the song",
+            "file_id": str = "the unique id of a file",
+            "artist_name": str = "artist_name",
+            "track_name": str = "track_name",
+            "album_name": str = "album_name",
+            "total_bytes": int = "size of the file in bytes",
+            "duration": int = "the duration of the song in seconds",
+            "downloaded_bytes": int = "size of the downloaded file in bytes",
+            "discarded": bool = "whether the download of the track is discarded or not"
         }
 
     @end
@@ -136,7 +136,7 @@ version: 1.1.1
 *** TrackList
 
     @code python
-    class TrackList (List):
+    class TrackList (List[Track]):
         """
         Its just a list of Tracks
         """
@@ -145,12 +145,12 @@ version: 1.1.1
 *** Info
 
     @code python
-    class Info ():
+    class Info (dict[str, str | TrackList | bool]):
 
         info = {
-            "url_type":LinkType = "type of url",
-            "tracks":TrackList = "List of Tracks",
-            "discarded":bool = "Whether the tracks of this info is discarded or not"
+            "url_type": LinkType = "type of url",
+            "tracks": TrackList = "List of Tracks",
+            "discarded": bool = "Whether the tracks of this info is discarded or not"
         }
 
     @end
@@ -158,7 +158,7 @@ version: 1.1.1
 *** InfoTree
 
     @code python
-    class InfoTree (List):
+    class InfoTree (List[Info]):
         """
         just a list of Info
         """
@@ -167,7 +167,7 @@ version: 1.1.1
 *** DownloadQueue
 
     @code python
-    class DownloadQueue (MovableList):
+    class DownloadQueue (MovableList[Track]):
         """
         just a Queue of Track, the dowload task will pop off from 0th index and
         downloads the files
@@ -201,6 +201,8 @@ version: 1.1.1
    The client will have the exact same data structures as the daemon, with
    some extra few. They are specified below.
 
+   Todo: maybe make the subclasses of dict types immutable ?
+
 *** User Input
 
     The user could give a url or an query string to download the tracks. If the
@@ -223,7 +225,7 @@ version: 1.1.1
 *** Request
 
     @code python
-    class Request (dict):
+    class Request (dict[str, str | UrlType | None]):
 
         request = {
             "query": str | None = "the string to use to search for urls"
@@ -236,7 +238,7 @@ version: 1.1.1
 *** RequestList
 
     @code python
-    class RequestList (List):
+    class RequestList (List[Request]):
         """
         just a list of Request
         """
@@ -246,7 +248,7 @@ version: 1.1.1
 *** RequestQueue
 
     @code python
-    class RequestQueue (MovableList):
+    class RequestQueue (MovableList[Request]):
         """
         queue of Request, the request thread will pop, each as it requests for
         response
@@ -257,12 +259,12 @@ version: 1.1.1
 *** Link
 
     @code python
-    class Link ():
+    class Link (dict[str | UrlType]):
 
         link = {
-            "url":str = "the spotify url",
-            "utype":UrlType = "track, album, playlist",
-            "title":str = "title string from the google search"
+            "url": str = "the spotify url",
+            "utype": UrlType = "track, album, playlist",
+            "title": str = "title string from the google search"
         }
 
     @end
@@ -270,7 +272,7 @@ version: 1.1.1
 *** LinkList
 
     @code python
-    class LinkList (List):
+    class LinkList (List[Link]):
         """
         list of Link
         """
@@ -280,19 +282,19 @@ version: 1.1.1
 *** Response
 
     @code python
-    class Response ():
+    class Response (dict[str, str | int | LinkList]):
 
         response = {
-            "request_time":str = "unix time in seconds at the time of the request",
-            "link_list":LinkList = "list of gathered links",
-            "last_selected":int = "index of the last selected link"
+            "request_time": str = "unix time in seconds at the time of the request",
+            "link_list": LinkList = "list of gathered links",
+            "last_selected": int = "index of the last selected link"
         }
     @end
 
 *** ResponseTree
 
     @code python
-    class ResponseTree (List):
+    class ResponseTree (List[Response]):
         """
         just a list of Response
         """
