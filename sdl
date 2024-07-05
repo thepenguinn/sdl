@@ -4,11 +4,14 @@ from telethon import TelegramClient, events, tl
 
 from pyfzf.pyfzf import FzfPrompt
 from concurrent.futures import ThreadPoolExecutor
-from mutagen.id3 import ID3, USLT, TPE1
 from bs4 import BeautifulSoup
 from typing import List, Any
 from pprint import pprint
 from enum import Enum
+
+# pyright told me so...
+from mutagen.id3 import ID3
+from mutagen.id3._frames import USLT, TPE1
 
 from threading import Lock as ThreadLock
 
@@ -52,7 +55,7 @@ class SpotQuery:
     def __init__ (self, query):
 
         if SpotQuery._re_pat is None:
-            SpotQuery._re_pat = re.compile("^(https://open\.spotify\.com/(.+)/.{22})(\?)?(.*)$")
+            SpotQuery._re_pat = re.compile(r'^(https://open\.spotify\.com/(.+)/.{22})(\?)?(.*)$')
         if SpotQuery._fzf is None:
             SpotQuery._fzf = FzfPrompt()
         self.query = query
@@ -662,7 +665,7 @@ class Query (dict[str, str | LinkList | None]):
         self["link_list"] = link_list
         self["request_time"] = request_time
 
-    return
+        return
 
 # common data
 class QueryList (List[Query]):
@@ -714,12 +717,12 @@ class Info (dict[str, str | TrackList | bool]):
 
     def __init__ (
         self,
-        url_type: str,
+        utype: UrlType,
         tracks: TrackList,
         discarded: bool = False
         ) -> None:
 
-        self["url_type"] = url_type
+        self["utype"] = utype
         self["tracks"] = tracks
         self["discarded"] = discarded
 
@@ -729,6 +732,10 @@ class InfoTree (List[Info]):
     """
     just a list of Info
     """
+
+info_tree = InfoTree()
+
+info_tree.append("something else")
 
 class DownloadQueue (MovableList[Track]):
     """

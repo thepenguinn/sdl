@@ -8,7 +8,7 @@ categories: [
     spec
 ]
 created: 2024-06-30T15:16:04+0530
-updated: 2024-07-05T15:56:26+0530
+updated: 2024-07-05T16:34:38+0530
 version: 1.1.1
 @end
 
@@ -148,7 +148,7 @@ version: 1.1.1
     class Info (dict[str, str | TrackList | bool]):
 
         info = {
-            "url_type": LinkType = "type of url",
+            "utype": UrlType = "type of url",
             "tracks": TrackList = "List of Tracks",
             "discarded": bool = "Whether the tracks of this info is discarded or not"
         }
