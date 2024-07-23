@@ -411,6 +411,7 @@ class SpotQuery:
 
 AnyType = TypeVar("AnyType")
 
+# common data classes
 class MovableList (List[AnyType]):
 
     # def __init__ (self, values: List[Any] = None) -> None:
@@ -549,8 +550,6 @@ class UrlType (Enum):
 
 class Request (dict[str | None]):
 
-    _re_pat: re.Pattern | None = None
-
     def __init__ (
         self,
         query: str | None = None,
@@ -558,36 +557,17 @@ class Request (dict[str | None]):
         utype: str | None = None
         ) -> None:
 
-        match: re.Match | None
-        url_type: str
-
-        if Request._re_pat is None:
-            Request._re_pat = re.compile("^(https://open\.spotify\.com/(.+)/.{22})(\?)?(.*)$")
-
         if query is not None:
-            self.query = query
-            self.url = None
-            self.utype = None
+            self["query"] = query
+            self["url"] = None
+            self["utype"] = None
         elif url is not None:
-            self.url = url
-            self.query = None
-
-            # TODO: maybe make utype manditory if the url is given
-            if utype is None:
-                match = self._re_pat.match(url)
-                if match is not None:
-
-                    url_type = match.groups()[1]
-
-                    if url_type == "album":
-                        self.utype = UrlType.ALBUM
-                    elif url_type == "track":
-                        self.utype = UrlType.TRACK
-                    elif url_type == "playlist":
-                        self.utype = UrlType.PLAYLIST
-                    else:
-                        # TODO: this shouldn't happen raise an Execption
-                        pass
+            self["url"] = url
+            if utype is not None:
+                self["utype"] = utype
+            else:
+                raise TypeError("utype is manditory when a url is given")
+            self["query"] = None
         else:
             raise TypeError("Both query and url were None, either of two should be not None")
 
