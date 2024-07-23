@@ -574,10 +574,17 @@ class Request (dict[str | None]):
         return
 
 class RequestList (List[Request]):
-    """
-    just a list of Request
-    """
-    pass
+
+    def new_request (
+        self,
+        query: str | None = None,
+        url: str | None = None,
+        utype: str | None = None
+        ) -> None:
+
+        self.append(Request(query = query, url = url, utype = utype))
+
+        return
 
 class RequestQueue (MovableList[Request]):
     """
